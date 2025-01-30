@@ -130,7 +130,7 @@ class IBWrapper(EWrapper):
             self.data_queue.put(('request_option_data', contract))
         self.data_queue.put(('position', contract, pos, avg_cost))
 
-    def historicalData(self, reqId, bar: BarData):
+    def historicalData(self, reqId: int, bar: BarData):
         self.data_queue.put(('historical', reqId, bar))
 
     def contractDetails(self, reqId: int, contractDetails):
@@ -232,12 +232,13 @@ class TWSConnector(IBWrapper, TWS):
         contract.multiplier = "100"
         
         # Format local symbol exactly as TWS expects
-        # Example for Jan 27 2025 6100 Put: "spxw  250127P06100000"
+        # Example for Jan 27 2025 6100 Put: "spxw 250127P06100000"
         yy = expiry[2:4]
         mm = expiry[4:6]
         dd = expiry[6:8]
-        strike_padded = f"{int(strike):08d}"  # No multiplication needed, just pad to 8 digits
-        contract.localSymbol = f"spxw  {yy}{mm}{dd}{right}{strike_padded}"  # Note: lowercase 'spxw'
+        strike_int = int(strike)
+        strike_padded = f"{strike_int:05d}000"  # 5 digits + "000"
+        contract.localSymbol = f"spxw {yy}{mm}{dd}{right}{strike_padded}"  # Single space after 'spxw'
         
         print(f"\nCreated contract:")
         print(f"Local Symbol: {contract.localSymbol}")
@@ -356,136 +357,139 @@ class TWSConnector(IBWrapper, TWS):
 
     def request_option_chain(self, expiry: str, right: str, min_strike: float, max_strike: float, target_delta: float = 0.15) -> List[OptionPosition]:
         """Request option chain data for SPX options within a strike range"""
-        target_delta = target_delta if right == "C" else -target_delta  # Make target negative for puts
+        print("\nDEBUG: Entering request_option_chain")
         
-        # Track options above and below target delta
-        option_above = None
-        option_below = None
-        delta_above = None
-        delta_below = None
+        # Create base contract - keep it simple
+        contract = Contract()
+        contract.symbol = "SPX"
+        contract.secType = "OPT"
+        contract.exchange = "CBOE"
+        contract.strike = min_strike
+        contract.right = right
+        contract.lastTradeDateOrContractMonth = expiry
         
-        # Start with the initial strike
-        current_strike = min_strike
+        print("\nDEBUG: Contract created:")
+        print(f"Symbol: {contract.symbol}")
+        print(f"Strike: {contract.strike}")
+        print(f"Expiry: {contract.lastTradeDateOrContractMonth}")
+        print(f"Right: {contract.right}")
+        print(f"Exchange: {contract.exchange}")
         
-        while True:
-            # Create base contract
-            contract = Contract()
-            contract.symbol = "SPX"
-            contract.secType = "OPT"
-            contract.exchange = "SMART"
-            contract.currency = "USD"
-            contract.right = right
-            contract.lastTradeDateOrContractMonth = expiry
-            contract.strike = current_strike
-            contract.tradingClass = "SPXW"
-            contract.multiplier = "100"
-            
-            # Format local symbol correctly
-            yy = expiry[2:4]
-            mm = expiry[4:6]
-            dd = expiry[6:8]
-            strike_padded = f"{int(current_strike):05d}000"
-            contract.localSymbol = f"SPXW  {yy}{mm}{dd}{right}{strike_padded}"
-            
-            # Request contract details
-            req_id = self.get_next_req_id()
-            self.reqContractDetails(req_id, contract)
-            
-            # Wait for contract details
-            contract_found = False
-            qualified_contract = None
-            start_time = time.time()
-            
-            while time.time() - start_time < 2:  # Reduced timeout
-                try:
-                    msg = self.data_queue.get(timeout=0.1)
-                    if msg[0] == 'contract_details':
-                        contract_found = True
-                        qualified_contract = msg[2].contract
-                        qualified_contract.exchange = msg[2].contract.exchange
-                        break
-                except queue.Empty:
-                    continue
-            
-            if not contract_found:
-                current_strike += 5 if right == "C" else -5
+        # Request contract details
+        req_id = self.get_next_req_id()
+        print(f"\nDEBUG: Requesting contract details with reqId: {req_id}")
+        self.reqContractDetails(req_id, contract)
+        
+        # Wait for contract details
+        contract_found = False
+        qualified_contract = None
+        start_time = time.time()
+        
+        while time.time() - start_time < 5:
+            try:
+                msg = self.data_queue.get(timeout=0.1)
+                print(f"\nDEBUG: Received message: {msg[0]}")
+                
+                if msg[0] == 'contract_details':
+                    print("DEBUG: Got contract details")
+                    contract_found = True
+                    qualified_contract = msg[2].contract
+                    break
+                elif msg[0] == 'error':
+                    print(f"DEBUG: Error received: {msg}")
+                    
+            except queue.Empty:
                 continue
+        
+        if not contract_found:
+            print("DEBUG: No contract details found")
+            return []
             
-            # Request market data
-            req_id = self.get_next_req_id()
-            self.reqMktData(req_id, qualified_contract, "106,165,221,232", False, False, [])
-            
-            # Wait for Greeks data
-            got_data = False
-            start_time = time.time()
-            current_delta = None
-            
-            while time.time() - start_time < 5:  # Reduced timeout
-                try:
-                    msg = self.data_queue.get(timeout=0.1)
-                    if msg[0] == 'option_computation':
-                        _, msg_req_id, tick_type, impl_vol, msg_delta, gamma, vega, theta, opt_price = msg
+        # Request market data
+        req_id = self.get_next_req_id()
+        print(f"\nDEBUG: Requesting market data with reqId: {req_id}")
+        self.reqMktData(req_id, qualified_contract, "", False, False, [])
+        
+        # Wait for Greeks data
+        got_data = False
+        start_time = time.time()
+        current_delta = None
+        option_data = None
+        
+        while time.time() - start_time < 5:
+            try:
+                msg = self.data_queue.get(timeout=0.1)
+                print(f"\nDEBUG: Received market data message: {msg[0]}")
+                
+                if msg[0] == 'option_computation':
+                    _, msg_req_id, tick_type, impl_vol, msg_delta, gamma, vega, theta, opt_price = msg
+                    print(f"DEBUG: Option computation - delta: {msg_delta}, IV: {impl_vol}")
+                    
+                    if msg_req_id == req_id and msg_delta != -2 and msg_delta != 0:
+                        got_data = True
+                        current_delta = msg_delta
                         
-                        if msg_req_id == req_id and msg_delta != -2 and msg_delta != 0:
-                            got_data = True
-                            current_delta = msg_delta
-                            
-                            # Create option position
-                            current_option = OptionPosition(
-                                contract=qualified_contract,
-                                position=0,
-                                avg_cost=0,
-                                delta=current_delta,
-                                implied_vol=impl_vol if impl_vol > 0 else None,
-                                gamma=gamma if gamma != -2 else None,
-                                vega=vega if vega != -2 else None,
-                                theta=theta if theta != -2 else None
-                            )
-                            
-                            # Track options above and below target
-                            if right == "C":
-                                if current_delta > target_delta:
-                                    option_above = current_option
-                                    delta_above = current_delta
-                                else:
-                                    option_below = current_option
-                                    delta_below = current_delta
-                                    break
-                            else:  # Put
-                                if current_delta < target_delta:
-                                    option_above = current_option
-                                    delta_above = current_delta
-                                else:
-                                    option_below = current_option
-                                    delta_below = current_delta
-                                    break
-                except queue.Empty:
-                    continue
-            
-            # Cancel market data request
-            self.cancelMktData(req_id)
-            
-            if not got_data:
-                current_strike += 5 if right == "C" else -5
+                        option_data = OptionPosition(
+                            contract=qualified_contract,
+                            position=0,
+                            avg_cost=0,
+                            delta=current_delta,
+                            implied_vol=impl_vol if impl_vol > 0 else None,
+                            gamma=gamma if gamma != -2 else None,
+                            vega=vega if vega != -2 else None,
+                            theta=theta if theta != -2 else None
+                        )
+                        break
+                        
+            except queue.Empty:
                 continue
-            
-            # If we found an option below target, we can stop searching
-            if option_below is not None:
-                break
-            
-            # Move to next strike
-            current_strike += 5 if right == "C" else -5
-            
-            time.sleep(0.1)  # Reduced delay
         
-        # Find the closest option to target delta
-        if option_above is not None and option_below is not None:
-            diff_above = abs(delta_above - target_delta)
-            diff_below = abs(delta_below - target_delta)
-            return [option_below if diff_below <= diff_above else option_above]
-        elif option_above is not None:
-            return [option_above]
-        elif option_below is not None:
-            return [option_below]
+        # Cancel market data request
+        print("\nDEBUG: Canceling market data request")
+        self.cancelMktData(req_id)
+        
+        if got_data:
+            print(f"\nDEBUG: Returning option with delta: {current_delta}")
+            return [option_data]
         else:
-            return [] 
+            print("\nDEBUG: No market data received")
+            return []
+
+    def request_spx_historical_data(self):
+        """Request historical data for SPX to get the previous closing price"""
+        contract = Contract()
+        contract.symbol = "SPX"
+        contract.secType = "IND"
+        contract.exchange = "CBOE"
+        contract.currency = "USD"
+        
+        # Request 1 day of historical data, ending at the current time
+        # This will give us the previous closing price
+        end_datetime = ""  # Empty string means "now"
+        self.reqHistoricalData(
+            reqId=1,
+            contract=contract,
+            endDateTime=end_datetime,
+            durationStr="1 D",
+            barSizeSetting="1 day",
+            whatToShow="TRADES",
+            useRTH=1,
+            formatDate=1,
+            keepUpToDate=False,
+            chartOptions=[]
+        )
+
+    def historicalData(self, reqId: int, bar):
+        """Callback for historical data"""
+        if reqId == 1:  # SPX historical data
+            self.spx_price = bar.close
+            self.cancelHistoricalData(reqId)
+        self.data_queue.put(('historical', reqId, bar))
+
+    def contractDetails(self, reqId: int, contractDetails):
+        """Called by TWS when contract details are received"""
+        self.data_queue.put(('contract_details', reqId, contractDetails))
+        
+    def contractDetailsEnd(self, reqId: int):
+        """Called by TWS when all contract details have been received"""
+        self.data_queue.put(('contract_details_end', reqId)) 
