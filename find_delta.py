@@ -34,6 +34,102 @@ def get_expiry_from_dte(dte: int) -> str:
         
     return expiry_date.strftime('%Y%m%d')
 
+def find_target_delta_option(tws, expiry: str, right: str, initial_strike: float, target_delta: float = 0.15):
+    """Search for an option with target delta using binary search"""
+    # Keep track of the best option we've found
+    best_delta_diff = float('inf')
+    best_option = None
+    
+    # Keep track of strikes we've tried to avoid loops
+    tried_strikes = set()
+    
+    # Track high and low bounds to help with binary search
+    high_strike = None  # Strike that gave delta < target
+    low_strike = None   # Strike that gave delta > target
+    
+    current_strike = initial_strike
+    target_delta = target_delta if right == "C" else -target_delta  # Negative for puts
+    
+    print(f"\nSearching for {abs(target_delta):.2f} delta {right}...")
+    
+    while True:
+        if current_strike in tried_strikes:
+            break
+            
+        print(f"\nTrying strike {current_strike}...")
+        tried_strikes.add(current_strike)
+        
+        options = tws.request_option_chain(expiry, right, current_strike, current_strike, target_delta=abs(target_delta))
+        
+        if not options:
+            print("No options returned from request")
+            return None
+            
+        current_delta = options[0].delta
+        current_diff = abs(current_delta - target_delta)
+        print(f"Found option with delta: {current_delta:.4f} (diff: {current_diff:.4f})")
+        
+        # Keep track of the best option we've found
+        if current_diff < best_delta_diff:
+            best_delta_diff = current_diff
+            best_option = options[0]
+            print(f"New best option found! Delta: {current_delta:.4f}")
+        
+        # If we're within 0.01 of target, we'll take it
+        if abs(current_delta - target_delta) <= 0.01:
+            print(f"\nFound excellent option!")
+            print(f"Strike: {options[0].contract.strike}")
+            print(f"Delta: {current_delta:.4f}")
+            print(f"IV: {options[0].implied_vol:.4f}")
+            print(f"Symbol: {options[0].contract.localSymbol}")
+            return options[0]
+            
+        # Update our bounds and use them to make a better guess
+        if current_delta > target_delta:
+            low_strike = current_strike
+            if high_strike is None:
+                # First time above target
+                if right == "C":
+                    # For calls: delta too high, move strike up
+                    adjustment = 25
+                else:
+                    # For puts: delta too high (e.g. -0.10), move strike up
+                    adjustment = 25
+            else:
+                adjustment = (high_strike - current_strike) // 2
+        else:
+            high_strike = current_strike
+            if low_strike is None:
+                # First time below target
+                if right == "C":
+                    # For calls: delta too low, move strike down
+                    adjustment = -25
+                else:
+                    # For puts: delta too low (e.g. -0.20), move strike down
+                    adjustment = -25
+            else:
+                adjustment = (low_strike - current_strike) // 2
+        
+        # Ensure adjustment is at least 5 points
+        if abs(adjustment) < 5:
+            adjustment = 5 if adjustment > 0 else -5
+            
+        # Round to nearest 5
+        current_strike = round((current_strike + adjustment) / 5) * 5
+        print(f"Adjusting strike by {adjustment} to {current_strike}")
+        
+        time.sleep(1)  # Add delay between attempts
+    
+    # If we didn't find an excellent option, use the best one we found
+    if best_option:
+        print(f"\nUsing best option found:")
+        print(f"Strike: {best_option.contract.strike}")
+        print(f"Delta: {best_option.delta:.4f}")
+        print(f"IV: {best_option.implied_vol:.4f}")
+        print(f"Symbol: {best_option.contract.localSymbol}")
+        
+    return best_option
+
 def main():
     # Initialize TWS connection
     tws = TWSConnector(client_id=99)
@@ -67,94 +163,41 @@ def main():
         expiry = get_expiry_from_dte(1)
         print(f"\nLooking for {1}DTE options (expiry: {expiry})")
         
-        # For calls: Start ~50 points OTM for 0.15 delta
-        # Round to nearest 5 points for SPX strikes
-        call_strike = round((spx_price + 50) / 5) * 5
+        # Find 0.15 delta call
+        call_strike = round((spx_price + 50) / 5) * 5  # Start ~50 points OTM
+        call_option = find_target_delta_option(tws, expiry, "C", call_strike)
         
-        # Keep track of the best option we've found
-        best_delta_diff = float('inf')
-        best_option = None
+        # Find 0.15 delta put
+        put_strike = round((spx_price - 50) / 5) * 5  # Start ~50 points OTM
+        put_option = find_target_delta_option(tws, expiry, "P", put_strike)
         
-        # Keep track of strikes we've tried to avoid loops
-        tried_strikes = set()
+        # Print final summary
+        print("\n" + "="*50)
+        print("🎯 FINAL RESULTS")
+        print("="*50)
+        print(f"SPX Price: {spx_price:.2f}")
+        print(f"Expiry: {expiry} (1DTE)")
+        print("-"*50)
         
-        # Track high and low bounds to help with binary search
-        high_strike = None  # Strike that gave delta < 0.15
-        low_strike = None   # Strike that gave delta > 0.15
-        
-        print("\nSearching for 0.15 delta call option...")
-        
-        while True:
-            if call_strike in tried_strikes:
-                # We've tried this strike before, we must be in a loop
-                # Take the best option we've found
-                break
-                
-            print(f"\nTrying strike {call_strike}...")
-            tried_strikes.add(call_strike)
+        if call_option:
+            print("\n📞 CALL OPTION:")
+            print(f"   Strike: {call_option.contract.strike}")
+            print(f"   Delta: {call_option.delta:.4f}")
+            print(f"   IV: {call_option.implied_vol:.4f}")
+            print(f"   Symbol: {call_option.contract.localSymbol}")
+        else:
+            print("\n❌ No suitable call option found")
             
-            target_calls = tws.request_option_chain(expiry, "C", call_strike, call_strike, target_delta=0.15)
+        if put_option:
+            print("\n📉 PUT OPTION:")
+            print(f"   Strike: {put_option.contract.strike}")
+            print(f"   Delta: {put_option.delta:.4f}")
+            print(f"   IV: {put_option.implied_vol:.4f}")
+            print(f"   Symbol: {put_option.contract.localSymbol}")
+        else:
+            print("\n❌ No suitable put option found")
             
-            if not target_calls:
-                print("No options returned from request")
-                return
-                
-            current_delta = target_calls[0].delta
-            current_diff = abs(current_delta - 0.15)
-            print(f"Found option with delta: {current_delta:.4f} (diff: {current_diff:.4f})")
-            
-            # Keep track of the best option we've found
-            if current_diff < best_delta_diff:
-                best_delta_diff = current_diff
-                best_option = target_calls[0]
-                print(f"New best option found! Delta: {current_delta:.4f}")
-            
-            # If we're within 0.01 of target, we'll take it
-            if 0.14 <= current_delta <= 0.16:
-                print(f"\nFound excellent option!")
-                print(f"Strike: {target_calls[0].contract.strike}")
-                print(f"Delta: {current_delta:.4f}")
-                print(f"IV: {target_calls[0].implied_vol:.4f}")
-                print(f"Symbol: {target_calls[0].contract.localSymbol}")
-                break
-                
-            # Update our bounds and use them to make a better guess
-            if current_delta > 0.15:
-                low_strike = call_strike
-                if high_strike is None:
-                    # First time above target, move up by 25
-                    adjustment = 25
-                else:
-                    # We have bounds, take the middle
-                    adjustment = (high_strike - call_strike) // 2
-            else:
-                high_strike = call_strike
-                if low_strike is None:
-                    # First time below target, move down by 25
-                    adjustment = -25
-                else:
-                    # We have bounds, take the middle
-                    adjustment = (low_strike - call_strike) // 2
-            
-            # Ensure adjustment is at least 5 points
-            if abs(adjustment) < 5:
-                adjustment = 5 if adjustment > 0 else -5
-                
-            # Round to nearest 5
-            call_strike = round((call_strike + adjustment) / 5) * 5
-            print(f"Adjusting strike by {adjustment} to {call_strike}")
-            
-            time.sleep(1)  # Add delay between attempts
-        
-        # If we didn't find an excellent option, use the best one we found
-        if best_option and (not 0.14 <= best_option.delta <= 0.16):
-            print(f"\nUsing best option found:")
-            print(f"Strike: {best_option.contract.strike}")
-            print(f"Delta: {best_option.delta:.4f}")
-            print(f"IV: {best_option.implied_vol:.4f}")
-            print(f"Symbol: {best_option.contract.localSymbol}")
-            
-        return
+        print("\n" + "="*50)
         
     finally:
         print("\nDisconnecting from TWS...")
