@@ -290,13 +290,54 @@ def execute_iron_condor(tws: TWSConnector = None):
             )
             
             print(f"\nOrder submitted with ID: {order_id}")
-            print("Monitoring order status for 5 minutes...")
+            print("Monitoring order status for 5 minutes with price adjustments...")
             
-            # Monitor the order for 5 minutes
-            if not tws.monitor_order(order_id, timeout_seconds=300):
-                # If not filled within 5 minutes, cancel the order
+            start_time = time.time()
+            original_credit = total_credit
+            
+            # First 2 minutes with original price
+            if not tws.monitor_order(order_id, timeout_seconds=120):
+                print("\nNot filled after 2 minutes, increasing bid by 0.05...")
+                # Cancel existing order
                 tws.cancel_order(order_id)
-                print("\nOrder cancelled after timeout")
+                time.sleep(1)  # Wait for cancellation
+                
+                # Submit new order with higher bid (less negative credit)
+                total_credit = original_credit - 0.05  # Subtract to make less negative
+                order_id = tws.submit_iron_condor(
+                    put_wing_contract=put_wing.contract,
+                    put_contract=put_option.contract,
+                    call_contract=call_option.contract,
+                    call_wing_contract=call_wing.contract,
+                    quantity=1,
+                    total_credit=total_credit
+                )
+                print(f"New order submitted with ID: {order_id} at credit: {total_credit:.2f}")
+                
+                # Next 2 minutes with first price increase
+                if not tws.monitor_order(order_id, timeout_seconds=120):
+                    print("\nNot filled after 4 minutes, increasing bid by another 0.05...")
+                    # Cancel existing order
+                    tws.cancel_order(order_id)
+                    time.sleep(1)  # Wait for cancellation
+                    
+                    # Submit final order with highest bid (least negative credit)
+                    total_credit = original_credit - 0.10  # Subtract to make less negative
+                    order_id = tws.submit_iron_condor(
+                        put_wing_contract=put_wing.contract,
+                        put_contract=put_option.contract,
+                        call_contract=call_option.contract,
+                        call_wing_contract=call_wing.contract,
+                        quantity=1,
+                        total_credit=total_credit
+                    )
+                    print(f"Final order submitted with ID: {order_id} at credit: {total_credit:.2f}")
+                    
+                    # Final 1 minute with highest price
+                    if not tws.monitor_order(order_id, timeout_seconds=60):
+                        print("\nNot filled after 5 minutes, canceling order...")
+                        tws.cancel_order(order_id)
+                        print("\nOrder cancelled after all attempts")
             
         print("\n" + "="*50)
         
@@ -309,10 +350,10 @@ def main():
     """Main function that sets up the scheduler"""
     scheduler = TradeScheduler()
     
-    # Schedule the iron condor trade for 14:43 ET
+    # Schedule the iron condor trade for 15:02 ET
     scheduler.add_trade(
         trade_name="SPX Iron Condor",
-        time_et="14:43",
+        time_et="15:02",
         trade_func=execute_iron_condor
     )
     
