@@ -171,7 +171,7 @@ def main():
         put_strike = round((spx_price - 50) / 5) * 5  # Start ~50 points OTM
         put_option = find_target_delta_option(tws, expiry, "P", put_strike)
         
-        # Print final summary
+        # Print final summary with prices
         print("\n" + "="*50)
         print("🎯 FINAL RESULTS")
         print("="*50)
@@ -180,22 +180,76 @@ def main():
         print("-"*50)
         
         if call_option:
-            print("\n📞 CALL OPTION:")
-            print(f"   Strike: {call_option.contract.strike}")
-            print(f"   Delta: {call_option.delta:.4f}")
-            print(f"   IV: {call_option.implied_vol:.4f}")
-            print(f"   Symbol: {call_option.contract.localSymbol}")
+            # Get price for call
+            call_price = tws.get_option_price(call_option.contract)
+            
+            # Get the call wing (30 points higher)
+            call_wing_strike = round((call_option.contract.strike + 30) / 5) * 5
+            print(f"\nGetting call wing at strike {call_wing_strike}...")
+            call_wing_options = tws.request_option_chain(expiry, "C", call_wing_strike, call_wing_strike)
+            if call_wing_options:
+                call_wing = call_wing_options[0]
+                call_wing_price = tws.get_option_price(call_wing.contract)
+            else:
+                print("Failed to get call wing option")
+                call_wing = None
+                call_wing_price = 0
+            
+            print("\n📞 CALL SPREAD:")
+            print(f"   Short Strike: {call_option.contract.strike}")
+            print(f"   Short Delta: {call_option.delta:.4f}")
+            print(f"   Short IV: {call_option.implied_vol:.4f}")
+            print(f"   Short Price: {call_price:.2f}")
+            print(f"   Short Symbol: {call_option.contract.localSymbol}")
+            if call_wing:
+                print(f"   Long Strike: {call_wing.contract.strike}")
+                print(f"   Long Delta: {call_wing.delta:.4f}")
+                print(f"   Long IV: {call_wing.implied_vol:.4f}")
+                print(f"   Long Price: {call_wing_price:.2f}")
+                print(f"   Long Symbol: {call_wing.contract.localSymbol}")
+                print(f"   Net Credit: {(call_price - call_wing_price):.2f}")
+            else:
+                print("   Failed to get long call details")
         else:
             print("\n❌ No suitable call option found")
             
         if put_option:
-            print("\n📉 PUT OPTION:")
-            print(f"   Strike: {put_option.contract.strike}")
-            print(f"   Delta: {put_option.delta:.4f}")
-            print(f"   IV: {put_option.implied_vol:.4f}")
-            print(f"   Symbol: {put_option.contract.localSymbol}")
+            # Get price for put
+            put_price = tws.get_option_price(put_option.contract)
+            
+            # Get the put wing (30 points lower)
+            put_wing_strike = round((put_option.contract.strike - 30) / 5) * 5
+            print(f"\nGetting put wing at strike {put_wing_strike}...")
+            put_wing_options = tws.request_option_chain(expiry, "P", put_wing_strike, put_wing_strike)
+            if put_wing_options:
+                put_wing = put_wing_options[0]
+                put_wing_price = tws.get_option_price(put_wing.contract)
+            else:
+                print("Failed to get put wing option")
+                put_wing = None
+                put_wing_price = 0
+            
+            print("\n📉 PUT SPREAD:")
+            print(f"   Short Strike: {put_option.contract.strike}")
+            print(f"   Short Delta: {put_option.delta:.4f}")
+            print(f"   Short IV: {put_option.implied_vol:.4f}")
+            print(f"   Short Price: {put_price:.2f}")
+            print(f"   Short Symbol: {put_option.contract.localSymbol}")
+            if put_wing:
+                print(f"   Long Strike: {put_wing.contract.strike}")
+                print(f"   Long Delta: {put_wing.delta:.4f}")
+                print(f"   Long IV: {put_wing.implied_vol:.4f}")
+                print(f"   Long Price: {put_wing_price:.2f}")
+                print(f"   Long Symbol: {put_wing.contract.localSymbol}")
+                print(f"   Net Credit: {(put_price - put_wing_price):.2f}")
+            else:
+                print("   Failed to get long put details")
         else:
             print("\n❌ No suitable put option found")
+            
+        if call_option and put_option and call_wing and put_wing:
+            total_credit = (call_price - call_wing_price) + (put_price - put_wing_price)
+            print(f"\n💰 Total Net Credit: {total_credit:.2f}")
             
         print("\n" + "="*50)
         

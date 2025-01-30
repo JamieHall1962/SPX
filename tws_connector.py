@@ -492,4 +492,37 @@ class TWSConnector(IBWrapper, TWS):
         
     def contractDetailsEnd(self, reqId: int):
         """Called by TWS when all contract details have been received"""
-        self.data_queue.put(('contract_details_end', reqId)) 
+        self.data_queue.put(('contract_details_end', reqId))
+
+    def get_option_price(self, contract: Contract) -> float:
+        """Get the mid price (bid+ask)/2 for an option"""
+        req_id = self.get_next_req_id()
+        self.reqMktData(req_id, contract, "100,101", False, False, [])  # Request bid/ask
+        
+        start_time = time.time()
+        bid = None
+        ask = None
+        
+        while time.time() - start_time < 2:  # 2 second timeout
+            try:
+                msg = self.data_queue.get(timeout=0.1)
+                if msg[0] == 'price':
+                    _, msg_req_id, tick_type, price = msg
+                    if msg_req_id == req_id:
+                        if tick_type == 1:  # Bid
+                            bid = price
+                        elif tick_type == 2:  # Ask
+                            ask = price
+                        
+                        if bid is not None and ask is not None:
+                            break
+                            
+            except queue.Empty:
+                continue
+                
+        self.cancelMktData(req_id)
+        
+        if bid is not None and ask is not None:
+            return (bid + ask) / 2
+        else:
+            return 0.0  # Return 0 if we couldn't get both bid and ask 
