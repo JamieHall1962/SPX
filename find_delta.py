@@ -2,6 +2,7 @@ from tws_connector import TWSConnector
 import time
 from datetime import datetime, timedelta
 import pytz
+from trade_scheduler import TradeScheduler
 
 def is_market_hours():
     """Check if it's currently market hours (9:30 AM - 4:15 PM ET, Mon-Fri)"""
@@ -130,14 +131,20 @@ def find_target_delta_option(tws, expiry: str, right: str, initial_strike: float
         
     return best_option
 
-def main():
-    # Initialize TWS connection
-    tws = TWSConnector(client_id=99)
+def execute_iron_condor(tws: TWSConnector = None):
+    """Execute the iron condor trade strategy"""
+    # Create TWS connection if not provided
+    if tws is None:
+        tws = TWSConnector(client_id=99)
+        try:
+            print("Connecting to TWS...")
+            tws.connect()
+            time.sleep(1)
+        except:
+            print("Failed to connect to TWS")
+            return
+    
     try:
-        print("Connecting to TWS...")
-        tws.connect()
-        time.sleep(1)  # Give TWS time to fully establish connection
-        
         # Get SPX price based on market hours
         if is_market_hours():
             print("Market is open - getting real-time price...")
@@ -163,13 +170,13 @@ def main():
         expiry = get_expiry_from_dte(1)
         print(f"\nLooking for {1}DTE options (expiry: {expiry})")
         
-        # Find 0.15 delta call
+        # Find 0.06 delta call (more OTM)
         call_strike = round((spx_price + 50) / 5) * 5  # Start ~50 points OTM
-        call_option = find_target_delta_option(tws, expiry, "C", call_strike)
+        call_option = find_target_delta_option(tws, expiry, "C", call_strike, target_delta=0.06)
         
-        # Find 0.15 delta put
+        # Find 0.20 delta put (less OTM)
         put_strike = round((spx_price - 50) / 5) * 5  # Start ~50 points OTM
-        put_option = find_target_delta_option(tws, expiry, "P", put_strike)
+        put_option = find_target_delta_option(tws, expiry, "P", put_strike, target_delta=0.20)
         
         # Print final summary with prices
         print("\n" + "="*50)
@@ -183,8 +190,8 @@ def main():
             # Get price for call
             call_price = tws.get_option_price(call_option.contract)
             
-            # Get the call wing (30 points higher)
-            call_wing_strike = round((call_option.contract.strike + 30) / 5) * 5
+            # Get the call wing (20 points higher)
+            call_wing_strike = round((call_option.contract.strike + 20) / 5) * 5
             print(f"\nGetting call wing at strike {call_wing_strike}...")
             call_wing_options = tws.request_option_chain(expiry, "C", call_wing_strike, call_wing_strike)
             if call_wing_options:
@@ -217,8 +224,8 @@ def main():
             # Get price for put
             put_price = tws.get_option_price(put_option.contract)
             
-            # Get the put wing (30 points lower)
-            put_wing_strike = round((put_option.contract.strike - 30) / 5) * 5
+            # Get the put wing (20 points lower)
+            put_wing_strike = round((put_option.contract.strike - 20) / 5) * 5
             print(f"\nGetting put wing at strike {put_wing_strike}...")
             put_wing_options = tws.request_option_chain(expiry, "P", put_wing_strike, put_wing_strike)
             if put_wing_options:
@@ -269,7 +276,7 @@ def main():
             
             print("\nTotal Structure:")
             print(f"    Total Credit: {total_credit:.2f}")
-            print(f"    Max Risk: {30:.0f} points = ${3000:.0f}")
+            print(f"    Max Risk: {20:.0f} points = ${2000:.0f}")
             print(f"    Break-even Points: {put_option.contract.strike - total_credit:.0f} and {call_option.contract.strike + total_credit:.0f}")
             
             # Submit the order
@@ -283,13 +290,40 @@ def main():
             )
             
             print(f"\nOrder submitted with ID: {order_id}")
-            print("Check TWS for order status")
+            print("Monitoring order status for 5 minutes...")
+            
+            # Monitor the order for 5 minutes
+            if not tws.monitor_order(order_id, timeout_seconds=300):
+                # If not filled within 5 minutes, cancel the order
+                tws.cancel_order(order_id)
+                print("\nOrder cancelled after timeout")
             
         print("\n" + "="*50)
         
     finally:
-        print("\nDisconnecting from TWS...")
-        tws.disconnect()
+        if tws is None:  # Only disconnect if we created the connection
+            print("\nDisconnecting from TWS...")
+            tws.disconnect()
+
+def main():
+    """Main function that sets up the scheduler"""
+    scheduler = TradeScheduler()
+    
+    # Schedule the iron condor trade for 14:43 ET
+    scheduler.add_trade(
+        trade_name="SPX Iron Condor",
+        time_et="14:43",
+        trade_func=execute_iron_condor
+    )
+    
+    # List all scheduled trades
+    scheduler.list_trades()
+    
+    # Run the scheduler
+    try:
+        scheduler.run()
+    except KeyboardInterrupt:
+        print("\nShutting down scheduler...")
 
 if __name__ == "__main__":
     main() 

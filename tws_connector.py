@@ -58,6 +58,10 @@ class IBWrapper(EWrapper):
         mktCapPrice: float
     ):
         """Called when the status of an order changes"""
+        # Store the status in our tracking dictionary
+        self.order_status[orderId] = status
+        
+        # Store in queue for processing
         self.data_queue.put((
             'order_status',
             orderId,
@@ -66,6 +70,11 @@ class IBWrapper(EWrapper):
             remaining,
             avgFillPrice
         ))
+        
+        # Print status change
+        print(f"\nOrder {orderId} status update: {status}")
+        if status == "Filled":
+            print(f"Filled at price: {avgFillPrice}")
     
     def execDetails(self, reqId: int, contract: Contract, execution: Execution):
         """Called when an order is executed"""
@@ -629,3 +638,42 @@ class TWSConnector(IBWrapper, TWS):
         
         self.placeOrder(order_id, contract, order)
         return order_id 
+
+    def cancel_order(self, order_id: int):
+        """Cancel an existing order"""
+        print(f"\nCanceling order {order_id}...")
+        self.cancelOrder(order_id)
+        
+    def get_order_status(self, order_id: int) -> str:
+        """Get the current status of an order"""
+        return self.order_status.get(order_id, "Unknown")
+        
+    def monitor_order(self, order_id: int, timeout_seconds: int = 300) -> bool:
+        """Monitor an order for a specified time period
+        Returns True if filled, False if not filled within timeout"""
+        
+        start_time = time.time()
+        last_status = None
+        
+        while time.time() - start_time < timeout_seconds:
+            current_status = self.get_order_status(order_id)
+            
+            # Only print if status has changed
+            if current_status != last_status:
+                print(f"\nOrder {order_id} status: {current_status}")
+                last_status = current_status
+            
+            # Check if order is filled
+            if current_status == "Filled":
+                print(f"\nOrder {order_id} has been filled!")
+                return True
+                
+            # Check if order was rejected or cancelled
+            if current_status in ["Cancelled", "Rejected"]:
+                print(f"\nOrder {order_id} was {current_status}")
+                return False
+                
+            time.sleep(1)  # Check every second
+            
+        print(f"\nOrder {order_id} not filled within {timeout_seconds} seconds")
+        return False 
