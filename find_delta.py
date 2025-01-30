@@ -251,6 +251,40 @@ def main():
             total_credit = (call_price - call_wing_price) + (put_price - put_wing_price)
             print(f"\n💰 Total Net Credit: {total_credit:.2f}")
             
+            # Add clear summary of the complete iron condor
+            print("\n" + "="*50)
+            print("🦅 IRON CONDOR SUMMARY")
+            print("="*50)
+            print(f"Expiry: {expiry} (1DTE)")
+            print(f"SPX Price: {spx_price:.2f}")
+            print("\nShort Put Spread:")
+            print(f"    {put_wing.contract.strike:.0f} Long Put  @ {put_wing_price:.2f}")
+            print(f"    {put_option.contract.strike:.0f} Short Put @ {put_price:.2f}")
+            print(f"    Credit: {(put_price - put_wing_price):.2f}")
+            
+            print("\nShort Call Spread:")
+            print(f"    {call_option.contract.strike:.0f} Short Call @ {call_price:.2f}")
+            print(f"    {call_wing.contract.strike:.0f} Long Call  @ {call_wing_price:.2f}")
+            print(f"    Credit: {(call_price - call_wing_price):.2f}")
+            
+            print("\nTotal Structure:")
+            print(f"    Total Credit: {total_credit:.2f}")
+            print(f"    Max Risk: {30:.0f} points = ${3000:.0f}")
+            print(f"    Break-even Points: {put_option.contract.strike - total_credit:.0f} and {call_option.contract.strike + total_credit:.0f}")
+            
+            # Submit the order
+            order_id = tws.submit_iron_condor(
+                put_wing_contract=put_wing.contract,
+                put_contract=put_option.contract,
+                call_contract=call_option.contract,
+                call_wing_contract=call_wing.contract,
+                quantity=1,
+                total_credit=total_credit
+            )
+            
+            print(f"\nOrder submitted with ID: {order_id}")
+            print("Check TWS for order status")
+            
         print("\n" + "="*50)
         
     finally:

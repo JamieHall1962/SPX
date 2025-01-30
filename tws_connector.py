@@ -5,6 +5,7 @@ from ibapi.common import BarData
 from ibapi.order_state import OrderState
 from ibapi.execution import Execution
 from ibapi.order import Order
+from ibapi.contract import ComboLeg
 from threading import Thread
 import time
 import queue
@@ -526,3 +527,105 @@ class TWSConnector(IBWrapper, TWS):
             return (bid + ask) / 2
         else:
             return 0.0  # Return 0 if we couldn't get both bid and ask 
+
+    def create_iron_condor_order(self, 
+                               put_wing_contract: Contract,
+                               put_contract: Contract, 
+                               call_contract: Contract,
+                               call_wing_contract: Contract,
+                               quantity: int = 1,
+                               total_credit: float = 0.0) -> Order:
+        """Create a BAG order for an iron condor spread"""
+        
+        # Round limit price to nearest 0.05 and make it negative (for credit orders)
+        limit_price = -round(total_credit * 20) / 20  # Make price negative for credit orders
+        
+        # Create the combo legs
+        combo_legs = []
+        
+        # Long put wing (BUY = positive ratio)
+        leg1 = ComboLeg()
+        leg1.conId = put_wing_contract.conId
+        leg1.ratio = 1
+        leg1.action = "BUY"
+        leg1.exchange = "SMART"
+        
+        # Short put (SELL = negative ratio)
+        leg2 = ComboLeg()
+        leg2.conId = put_contract.conId
+        leg2.ratio = 1
+        leg2.action = "SELL"
+        leg2.exchange = "SMART"
+        
+        # Short call (SELL = negative ratio)
+        leg3 = ComboLeg()
+        leg3.conId = call_contract.conId
+        leg3.ratio = 1
+        leg3.action = "SELL"
+        leg3.exchange = "SMART"
+        
+        # Long call wing (BUY = positive ratio)
+        leg4 = ComboLeg()
+        leg4.conId = call_wing_contract.conId
+        leg4.ratio = 1
+        leg4.action = "BUY"
+        leg4.exchange = "SMART"
+        
+        combo_legs.extend([leg1, leg2, leg3, leg4])
+        
+        # Create the BAG contract
+        contract = Contract()
+        contract.symbol = "SPX"
+        contract.secType = "BAG"
+        contract.currency = "USD"
+        contract.exchange = "SMART"
+        contract.comboLegs = combo_legs
+        
+        # Create the order
+        order = Order()
+        order.orderType = "LMT"
+        order.totalQuantity = quantity
+        order.lmtPrice = limit_price  # Using negative price for credit
+        order.action = "BUY"
+        order.tif = "DAY"
+        order.eTradeOnly = False
+        order.firmQuoteOnly = False
+        
+        return contract, order
+        
+    def submit_iron_condor(self,
+                          put_wing_contract: Contract,
+                          put_contract: Contract,
+                          call_contract: Contract,
+                          call_wing_contract: Contract,
+                          quantity: int = 1,
+                          total_credit: float = 0.0) -> int:
+        """Submit an iron condor order"""
+        
+        # Get next valid order ID
+        order_id = self.next_order_id
+        self.next_order_id += 1
+        
+        # Create the BAG contract and order
+        contract, order = self.create_iron_condor_order(
+            put_wing_contract=put_wing_contract,
+            put_contract=put_contract,
+            call_contract=call_contract,
+            call_wing_contract=call_wing_contract,
+            quantity=quantity,
+            total_credit=total_credit
+        )
+        
+        # Submit the order
+        print(f"\nSubmitting Iron Condor order:")
+        print(f"Order ID: {order_id}")
+        print(f"Quantity: {quantity}")
+        print(f"Limit Price: {order.lmtPrice:.2f}")
+        print("\nLegs:")
+        print(f"1. BUY  {put_wing_contract.strike} Put")
+        print(f"2. SELL {put_contract.strike} Put")
+        print(f"3. SELL {call_contract.strike} Call")
+        print(f"4. BUY  {call_wing_contract.strike} Call")
+        
+        self.placeOrder(order_id, contract, order)
+        return order_id 
