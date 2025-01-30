@@ -2,15 +2,15 @@ from tws_connector import TWSConnector
 import time
 from datetime import datetime, timedelta
 import pytz
-import queue
-from ibapi.contract import Contract
 
 def get_today_expiry():
-    """Get tomorrow's date for 1DTE options"""
-    et_tz = pytz.timezone('US/Eastern')
-    now = datetime.now(et_tz)
-    tomorrow = now + timedelta(days=1)
-    return tomorrow.strftime('%Y%m%d')
+    """Get today's expiry in the correct format"""
+    today = datetime.now()
+    # If it's after 4:15 PM ET, use tomorrow
+    et_time = datetime.now(pytz.timezone('US/Eastern'))
+    if et_time.hour > 16 or (et_time.hour == 16 and et_time.minute >= 15):
+        today += timedelta(days=1)
+    return today.strftime('%Y%m%d')
 
 def main():
     # Initialize TWS connection
@@ -19,158 +19,88 @@ def main():
         print("Connecting to TWS...")
         tws.connect()
         
-        def try_get_option(strike, option_type, attempt=1, max_attempts=3):
-            """Helper function to request option data with retries"""
-            print(f"Requesting {option_type} option at strike {strike}...")
-            
-            # Get expiry for 1DTE
-            expiry = get_today_expiry()
-            
-            # Request option chain around the strike
-            options = tws.request_option_chain(
-                expiry=expiry,
-                right=option_type,
-                min_strike=strike - 5,  # Look within 5 points
-                max_strike=strike + 5,
-                target_delta=0.15 if option_type == "C" else -0.15
-            )
-            
-            # Find the closest strike
-            closest_option = None
-            min_diff = float('inf')
-            for opt in options:
-                if opt.contract.strike == strike:
-                    closest_option = opt
-                    break
-                diff = abs(opt.contract.strike - strike)
-                if diff < min_diff:
-                    min_diff = diff
-                    closest_option = opt
-            
-            if not closest_option:
-                if attempt < max_attempts:
-                    print(f"Contract not found, retrying {option_type} option request...")
-                    time.sleep(1)
-                    return try_get_option(strike, option_type, attempt + 1, max_attempts)
-                return None
-            
-            # Use the qualified contract from the option chain
-            contract = closest_option.contract
-            contract.exchange = "CBOE"
-            
-            # Request market data
-            req_id = tws.get_next_req_id()
-            tws.reqMktData(req_id, contract, "106,165,221,232", False, False, [])
-            
-            # Wait for Greeks data
-            got_data = False
-            start_time = time.time()
-            result = None
-            
-            while time.time() - start_time < 2:
-                try:
-                    msg = tws.data_queue.get(timeout=0.1)
-                    if msg[0] == 'option_computation':
-                        _, msg_req_id, tick_type, impl_vol, delta, gamma, vega, theta, opt_price = msg
-                        
-                        if msg_req_id == req_id and delta != -2 and delta != 0:
-                            got_data = True
-                            result = {
-                                'strike': strike,
-                                'delta': delta,
-                                'iv': impl_vol if impl_vol > 0 else None,
-                                'symbol': contract.localSymbol
-                            }
-                            break
-                except queue.Empty:
-                    continue
-            
-            # Cancel market data request
-            tws.cancelMktData(req_id)
-            
-            if got_data:
-                return result
-            elif attempt < max_attempts:
-                print(f"Attempt {attempt} failed, retrying {option_type} option request...")
-                time.sleep(1)
-                return try_get_option(strike, option_type, attempt + 1, max_attempts)
-            return None
-
-        def find_option_with_target_delta(start_strike, option_type, max_tries=5):
-            """Find an option with delta close to 0.15 (or -0.15 for puts)"""
-            current_strike = start_strike
-            tries = 0
-            last_result = None
-            
-            while tries < max_tries:
-                result = try_get_option(current_strike, option_type, max_attempts=4)
-                if result:
-                    delta = abs(result['delta']) if option_type == "P" else result['delta']
-                    if 0.10 <= delta <= 0.20:
-                        return result
-                    
-                    # Store last valid result
-                    last_result = result
-                    
-                    # Adjust strike based on delta
-                    if option_type == "C":
-                        adjustment = 5 if delta < 0.15 else -5
-                    else:  # Put option
-                        adjustment = -5 if delta < 0.15 else 5
-                    
-                    current_strike = round((current_strike + adjustment) / 5) * 5
-                    print(f"{option_type} delta {delta:.4f} not close enough to 0.15, trying strike {current_strike}")
-                else:
-                    # If request failed, try a different strike
-                    current_strike += 5 if option_type == "C" else -5
-                    print(f"Failed to get data, trying strike {current_strike}")
-                
-                tries += 1
-                time.sleep(1)  # Wait between attempts
-            
-            # If we couldn't find an ideal option, return the last valid one we found
-            return last_result
-
-        # Get SPX price and wait for data
+        # Get SPX price
         tws.request_spx_data()
         timeout = time.time() + 3
-        spx_price = None
+        while tws.spx_price is None and time.time() < timeout:
+            time.sleep(0.1)
         
-        # Wait for either real-time or historical data
-        while time.time() < timeout:
-            try:
-                msg = tws.data_queue.get(timeout=0.1)
-                if msg[0] == 'price' and msg[2] == 4:  # Last price
-                    spx_price = msg[3]
-                    break
-                elif msg[0] == 'historical':  # Historical data
-                    spx_price = msg[2].close
-                    break
-            except queue.Empty:
-                continue
-        
-        if spx_price is None:
+        if tws.spx_price is None:
             print("Failed to get SPX price")
             return
             
-        print(f"\nSPX Price: {spx_price:.2f}\n")
-        time.sleep(1)  # Give TWS time before first request
+        spx_price = tws.spx_price
+        print(f"SPX Price: {spx_price:.2f}")
             
-        # Get expiry for 1DTE
-        expiry = get_today_expiry()
-        print(f"Using expiry: {expiry}")
+        expiry = "20250128"
         
-        # Find call option - start ~20 points OTM
-        print("\nFinding 0.15 delta call...")
-        call_strike = round((spx_price + 20) / 5) * 5
-        call_result = find_option_with_target_delta(call_strike, "C")
+        # For calls: Start ~15 points OTM (closer to expected 0.15 delta)
+        call_strike = round((spx_price + 15) / 5) * 5
+        print(f"\nFinding 0.15 delta call starting near {call_strike}...")
+        target_calls = tws.request_option_chain(expiry, "C", call_strike, 0, target_delta=0.15)
+        time.sleep(0.5)  # Give TWS time to process
+        call_result = None
+        if target_calls:
+            call_result = {
+                'strike': target_calls[0].contract.strike,
+                'delta': target_calls[0].delta,
+                'iv': target_calls[0].implied_vol,
+                'symbol': target_calls[0].contract.localSymbol
+            }
+            tws.cancelMktData(target_calls[0].contract.conId)
         
-        time.sleep(1.5)  # Longer wait between call and put
+        time.sleep(0.5)
         
-        # Find put option - start ~20 points OTM
-        print("\nFinding 0.15 delta put...")
-        put_strike = round((spx_price - 20) / 5) * 5
-        put_result = find_option_with_target_delta(put_strike, "P")
+        # For puts: Start ~15 points OTM (closer to expected -0.15 delta)
+        put_strike = round((spx_price - 15) / 5) * 5
+        print(f"\nFinding 0.15 delta put starting near {put_strike}...")
+        target_puts = tws.request_option_chain(expiry, "P", put_strike, 0, target_delta=0.15)
+        time.sleep(0.5)  # Give TWS time to process
+        put_result = None
+        if target_puts:
+            put_result = {
+                'strike': target_puts[0].contract.strike,
+                'delta': target_puts[0].delta,
+                'iv': target_puts[0].implied_vol,
+                'symbol': target_puts[0].contract.localSymbol
+            }
+            tws.cancelMktData(target_puts[0].contract.conId)
+        
+        # Verify we got reasonable results for calls
+        if not call_result or call_result['delta'] < 0.10 or call_result['delta'] > 0.20:
+            print("\nRetrying call with adjusted strike...")
+            # If delta too low, move strike down, if too high move strike up
+            adjustment = -10 if (call_result and call_result['delta'] < 0.15) else 10
+            call_strike = round((spx_price + adjustment) / 5) * 5
+            time.sleep(0.5)  # Give TWS time between requests
+            target_calls = tws.request_option_chain(expiry, "C", call_strike, 0, target_delta=0.15)
+            time.sleep(0.5)  # Give TWS time to process
+            if target_calls:
+                call_result = {
+                    'strike': target_calls[0].contract.strike,
+                    'delta': target_calls[0].delta,
+                    'iv': target_calls[0].implied_vol,
+                    'symbol': target_calls[0].contract.localSymbol
+                }
+                tws.cancelMktData(target_calls[0].contract.conId)
+        
+        # Verify we got reasonable results for puts
+        if not put_result or abs(put_result['delta']) < 0.10 or abs(put_result['delta']) > 0.20:
+            print("\nRetrying put with adjusted strike...")
+            # If abs(delta) too low, move strike up, if too high move strike down
+            adjustment = 10 if (put_result and abs(put_result['delta']) < 0.15) else -10
+            put_strike = round((spx_price + adjustment) / 5) * 5
+            time.sleep(0.5)  # Give TWS time between requests
+            target_puts = tws.request_option_chain(expiry, "P", put_strike, 0, target_delta=0.15)
+            time.sleep(0.5)  # Give TWS time to process
+            if target_puts:
+                put_result = {
+                    'strike': target_puts[0].contract.strike,
+                    'delta': target_puts[0].delta,
+                    'iv': target_puts[0].implied_vol,
+                    'symbol': target_puts[0].contract.localSymbol
+                }
+                tws.cancelMktData(target_puts[0].contract.conId)
         
         # Cancel SPX data
         tws.cancelMktData(1)
@@ -191,7 +121,7 @@ def main():
         else:
             print("\n❌ No suitable call option found")
             
-        if put_result and 0.10 <= abs(put_result['delta']) <= 0.20:
+        if put_result and -0.20 <= put_result['delta'] <= -0.10:
             print("\n📉 PUT OPTION:")
             print(f"   Strike: {put_result['strike']}")
             print(f"   Delta: {put_result['delta']:.4f}")
