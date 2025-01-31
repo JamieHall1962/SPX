@@ -3,7 +3,7 @@ import time
 from datetime import datetime, timedelta
 import pytz
 from trade_scheduler import TradeScheduler
-from trade_config import TradeConfig, DC_CONFIG, DC_CONFIG_2
+from trade_config import TradeConfig, DC_CONFIG, DC_CONFIG_2, DC_CONFIG_3, DC_CONFIG_4
 
 def is_market_hours():
     """Check if we can get quotes (20:15 - 16:00 ET, Mon-Fri)"""
@@ -349,24 +349,77 @@ def execute_iron_condor(tws: TWSConnector = None):
             print("\nDisconnecting from TWS...")
             tws.disconnect()
 
-def execute_double_calendar(tws: TWSConnector = None, config: TradeConfig = DC_CONFIG):
+class ConnectionManager:
+    def __init__(self, client_id=99, check_interval=180):  # Check every 3 minutes
+        self.client_id = client_id
+        self.check_interval = check_interval
+        self.tws = None
+        self.last_check = 0
+        self.connect()
+    
+    def connect(self):
+        """Establish connection to TWS"""
+        if self.tws is None:
+            self.tws = TWSConnector(client_id=self.client_id)
+        
+        if not self.tws.is_connected():
+            print("\nConnecting to TWS...")
+            try:
+                self.tws.connect()
+                time.sleep(1)  # Wait for connection to stabilize
+                print("Successfully connected to TWS")
+            except Exception as e:
+                print(f"Failed to connect to TWS: {str(e)}")
+                return False
+        return True
+    
+    def check_connection(self):
+        """Check connection status and reconnect if needed"""
+        current_time = time.time()
+        
+        # Only check every check_interval seconds
+        if current_time - self.last_check < self.check_interval:
+            return True
+            
+        self.last_check = current_time
+        
+        if not self.tws or not self.tws.is_connected():
+            print("\nConnection lost, attempting to reconnect...")
+            return self.connect()
+        
+        return True
+    
+    def get_tws(self):
+        """Get the TWS connection, checking/reconnecting if needed"""
+        if self.check_connection():
+            return self.tws
+        return None
+    
+    def disconnect(self):
+        """Gracefully disconnect from TWS"""
+        if self.tws and self.tws.is_connected():
+            print("\nDisconnecting from TWS...")
+            self.tws.disconnect()
+            self.tws = None
+
+def execute_double_calendar(connection_manager: ConnectionManager, config: TradeConfig = DC_CONFIG):
     """Execute a double calendar trade strategy"""
-    # Create TWS connection if not provided
-    if tws is None:
-        tws = TWSConnector(client_id=99)
-        try:
-            print("Connecting to TWS...")
-            tws.connect()
-            time.sleep(1)
-        except:
-            print("Failed to connect to TWS")
-            return
+    tws = connection_manager.get_tws()
+    if not tws:
+        print("No TWS connection available")
+        return
     
     try:
         # Get SPX price with retries
         max_retries = 3
         retry_count = 0
         while retry_count < max_retries:
+            # Check connection before each major operation
+            tws = connection_manager.get_tws()
+            if not tws:
+                print("Lost connection during price retrieval")
+                return
+                
             if is_market_hours():
                 print("Market is open - getting real-time price...")
                 tws.request_spx_data()
@@ -374,7 +427,7 @@ def execute_double_calendar(tws: TWSConnector = None, config: TradeConfig = DC_C
                 print("Market is closed - getting previous closing price...")
                 tws.request_spx_historical_data()
             
-            timeout = time.time() + 5  # Increased timeout to 5 seconds
+            timeout = time.time() + 5
             while tws.spx_price is None and time.time() < timeout:
                 time.sleep(0.1)
             
@@ -383,7 +436,7 @@ def execute_double_calendar(tws: TWSConnector = None, config: TradeConfig = DC_C
                 
             retry_count += 1
             print(f"Retry {retry_count}/{max_retries} getting SPX price...")
-            time.sleep(2)  # Wait before retry
+            time.sleep(2)
         
         if tws.spx_price is None:
             print("Failed to get SPX price after all retries")
@@ -586,36 +639,72 @@ def execute_double_calendar(tws: TWSConnector = None, config: TradeConfig = DC_C
             print("\nDisconnecting from TWS...")
             tws.disconnect()
 
-def execute_dc_config_2(tws=None):
+def execute_dc_config_2(connection_manager):
     """Wrapper function to execute DC_CONFIG_2"""
-    return execute_double_calendar(tws, config=DC_CONFIG_2)
+    return execute_double_calendar(connection_manager, config=DC_CONFIG_2)
+
+def execute_dc_config_3(connection_manager):
+    """Wrapper function to execute DC_CONFIG_3"""
+    return execute_double_calendar(connection_manager, config=DC_CONFIG_3)
+
+def execute_dc_config_4(connection_manager):
+    """Wrapper function to execute DC_CONFIG_4"""
+    return execute_double_calendar(connection_manager, config=DC_CONFIG_4)
 
 def main():
-    """Main function that sets up the scheduler"""
+    """Main function that sets up the scheduler and connection manager"""
+    connection_manager = ConnectionManager(client_id=99, check_interval=180)
     scheduler = TradeScheduler()
     
     # Schedule the first double calendar trade for 10:15 ET every Friday
     scheduler.add_trade(
-        trade_name=DC_CONFIG.trade_name,  # Will generate "DC_3D_67D_3035_0"
+        trade_name=DC_CONFIG.trade_name,
         time_et="10:15",
-        trade_func=execute_double_calendar
+        trade_func=lambda: execute_double_calendar(connection_manager)
     )
     
     # Schedule the second double calendar trade for 11:55 ET every Friday
     scheduler.add_trade(
-        trade_name=DC_CONFIG_2.trade_name,  # Will generate "DC_5D_77D_5050_0"
+        trade_name=DC_CONFIG_2.trade_name,
         time_et="11:55",
-        trade_func=execute_dc_config_2  # Using wrapper function instead of lambda
+        trade_func=lambda: execute_dc_config_2(connection_manager)
+    )
+    
+    # Schedule the third double calendar trade for 13:00 ET every Friday
+    scheduler.add_trade(
+        trade_name=DC_CONFIG_3.trade_name,
+        time_et="13:00",
+        trade_func=lambda: execute_dc_config_3(connection_manager)
+    )
+    
+    # Schedule the fourth double calendar trade for 14:10 ET every Friday
+    scheduler.add_trade(
+        trade_name=DC_CONFIG_4.trade_name,
+        time_et="14:10",
+        trade_func=lambda: execute_dc_config_4(connection_manager)
     )
     
     # List all scheduled trades
     scheduler.list_trades()
     
-    # Run the scheduler
+    # Run the scheduler with connection monitoring
     try:
-        scheduler.run()
+        while True:
+            # Check connection status periodically
+            if not connection_manager.check_connection():
+                print("Unable to maintain TWS connection, retrying in 30 seconds...")
+                time.sleep(30)
+                continue
+                
+            scheduler.run(blocking=False)  # Non-blocking to allow connection checks
+            time.sleep(1)  # Sleep to prevent CPU spinning
+            
     except KeyboardInterrupt:
         print("\nShutting down scheduler...")
+    finally:
+        # Connection will be maintained until explicitly disconnected
+        # This allows for future dashboard integration
+        pass
 
 if __name__ == "__main__":
     main() 

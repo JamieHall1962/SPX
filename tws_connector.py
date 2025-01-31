@@ -677,3 +677,81 @@ class TWSConnector(IBWrapper, TWS):
             
         print(f"\nOrder {order_id} not filled within {timeout_seconds} seconds")
         return False 
+
+    def submit_double_calendar(self,
+                          short_put_contract: Contract,
+                          long_put_contract: Contract,
+                          short_call_contract: Contract,
+                          long_call_contract: Contract,
+                          quantity: int = 1,
+                          total_debit: float = 0.0) -> int:
+        """Submit a double calendar order"""
+        
+        # Get next valid order ID
+        order_id = self.next_order_id
+        self.next_order_id += 1
+        
+        # Create combo legs
+        combo_legs = []
+        
+        # Long put leg
+        leg1 = ComboLeg()
+        leg1.conId = long_put_contract.conId
+        leg1.ratio = 1
+        leg1.action = "BUY"
+        leg1.exchange = "SMART"
+        
+        # Short put leg
+        leg2 = ComboLeg()
+        leg2.conId = short_put_contract.conId
+        leg2.ratio = 1
+        leg2.action = "SELL"
+        leg2.exchange = "SMART"
+        
+        # Short call leg
+        leg3 = ComboLeg()
+        leg3.conId = short_call_contract.conId
+        leg3.ratio = 1
+        leg3.action = "SELL"
+        leg3.exchange = "SMART"
+        
+        # Long call leg
+        leg4 = ComboLeg()
+        leg4.conId = long_call_contract.conId
+        leg4.ratio = 1
+        leg4.action = "BUY"
+        leg4.exchange = "SMART"
+        
+        combo_legs.extend([leg1, leg2, leg3, leg4])
+        
+        # Create the BAG contract
+        contract = Contract()
+        contract.symbol = "SPX"
+        contract.secType = "BAG"
+        contract.currency = "USD"
+        contract.exchange = "SMART"
+        contract.comboLegs = combo_legs
+        
+        # Create the order
+        order = Order()
+        order.orderType = "LMT"
+        order.totalQuantity = quantity
+        order.lmtPrice = total_debit  # For debit orders, use positive price
+        order.action = "BUY"
+        order.tif = "DAY"
+        order.eTradeOnly = False
+        order.firmQuoteOnly = False
+        
+        # Submit the order
+        print(f"\nSubmitting Double Calendar order:")
+        print(f"Order ID: {order_id}")
+        print(f"Quantity: {quantity}")
+        print(f"Debit Price: {order.lmtPrice:.2f}")
+        print("\nLegs:")
+        print(f"1. BUY  {long_put_contract.strike} Put (Long)")
+        print(f"2. SELL {short_put_contract.strike} Put (Short)")
+        print(f"3. SELL {short_call_contract.strike} Call (Short)")
+        print(f"4. BUY  {long_call_contract.strike} Call (Long)")
+        
+        self.placeOrder(order_id, contract, order)
+        return order_id 
