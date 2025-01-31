@@ -3,9 +3,10 @@ import time
 from datetime import datetime, timedelta
 import pytz
 from trade_scheduler import TradeScheduler
+from trade_config import TradeConfig, DC_CONFIG, DC_CONFIG_2
 
 def is_market_hours():
-    """Check if it's currently market hours (9:30 AM - 4:15 PM ET, Mon-Fri)"""
+    """Check if we can get quotes (20:15 - 16:00 ET, Mon-Fri)"""
     et_time = datetime.now(pytz.timezone('US/Eastern'))
     
     # Check if it's a weekday
@@ -15,8 +16,10 @@ def is_market_hours():
     # Convert time to decimal hours for easier comparison
     hour_dec = et_time.hour + et_time.minute/60
     
-    # Market hours are 9:30 AM - 4:15 PM ET
-    return 9.5 <= hour_dec <= 16.25
+    # Can get quotes during:
+    # - Regular Trading Hours (RTH): 9:30 AM - 4:00 PM ET
+    # - Extended Hours: 8:15 PM - 9:15 AM ET next day
+    return (20.25 <= hour_dec <= 24.0) or (0.0 <= hour_dec <= 16.0)
 
 def get_expiry_from_dte(dte: int) -> str:
     """Calculate the expiry date string from DTE (Days To Expiry)"""
@@ -285,7 +288,7 @@ def execute_iron_condor(tws: TWSConnector = None):
                 put_contract=put_option.contract,
                 call_contract=call_option.contract,
                 call_wing_contract=call_wing.contract,
-                quantity=1,
+                quantity=3,
                 total_credit=total_credit
             )
             
@@ -309,7 +312,7 @@ def execute_iron_condor(tws: TWSConnector = None):
                     put_contract=put_option.contract,
                     call_contract=call_option.contract,
                     call_wing_contract=call_wing.contract,
-                    quantity=1,
+                    quantity=3,
                     total_credit=total_credit
                 )
                 print(f"New order submitted with ID: {order_id} at credit: {total_credit:.2f}")
@@ -328,7 +331,7 @@ def execute_iron_condor(tws: TWSConnector = None):
                         put_contract=put_option.contract,
                         call_contract=call_option.contract,
                         call_wing_contract=call_wing.contract,
-                        quantity=1,
+                        quantity=3,
                         total_credit=total_credit
                     )
                     print(f"Final order submitted with ID: {order_id} at credit: {total_credit:.2f}")
@@ -346,15 +349,263 @@ def execute_iron_condor(tws: TWSConnector = None):
             print("\nDisconnecting from TWS...")
             tws.disconnect()
 
+def execute_double_calendar(tws: TWSConnector = None, config: TradeConfig = DC_CONFIG):
+    """Execute a double calendar trade strategy"""
+    # Create TWS connection if not provided
+    if tws is None:
+        tws = TWSConnector(client_id=99)
+        try:
+            print("Connecting to TWS...")
+            tws.connect()
+            time.sleep(1)
+        except:
+            print("Failed to connect to TWS")
+            return
+    
+    try:
+        # Get SPX price with retries
+        max_retries = 3
+        retry_count = 0
+        while retry_count < max_retries:
+            if is_market_hours():
+                print("Market is open - getting real-time price...")
+                tws.request_spx_data()
+            else:
+                print("Market is closed - getting previous closing price...")
+                tws.request_spx_historical_data()
+            
+            timeout = time.time() + 5  # Increased timeout to 5 seconds
+            while tws.spx_price is None and time.time() < timeout:
+                time.sleep(0.1)
+            
+            if tws.spx_price is not None:
+                break
+                
+            retry_count += 1
+            print(f"Retry {retry_count}/{max_retries} getting SPX price...")
+            time.sleep(2)  # Wait before retry
+        
+        if tws.spx_price is None:
+            print("Failed to get SPX price after all retries")
+            return
+            
+        spx_price = tws.spx_price
+        print(f"\nSPX Price: {spx_price:.2f}")
+        
+        # Get expiries
+        short_expiry = get_expiry_from_dte(config.short_dte)
+        put_long_expiry = get_expiry_from_dte(config.put_long_dte)
+        call_long_expiry = get_expiry_from_dte(config.call_long_dte)
+        
+        print(f"\nLooking for options:")
+        print(f"Short DTE: {config.short_dte} (expiry: {short_expiry})")
+        print(f"Put Long DTE: {config.put_long_dte} (expiry: {put_long_expiry})")
+        print(f"Call Long DTE: {config.call_long_dte} (expiry: {call_long_expiry})")
+        
+        # Find short options with retries
+        initial_put_strike = round((spx_price - 50) / 5) * 5  # Round to nearest 5
+        initial_call_strike = round((spx_price + 50) / 5) * 5  # Round to nearest 5
+        
+        print("\nFinding short options...")
+        short_put = find_target_delta_option(tws, short_expiry, "P", initial_put_strike, target_delta=config.put_delta)
+        if not short_put:
+            print("Failed to find short put option")
+            return
+            
+        short_call = find_target_delta_option(tws, short_expiry, "C", initial_call_strike, target_delta=config.call_delta)
+        if not short_call:
+            print("Failed to find short call option")
+            return
+            
+        # Find long options at same strikes (if offset is 0) or offset strikes
+        long_put_strike = short_put.contract.strike - config.put_width
+        long_call_strike = short_call.contract.strike + config.call_width
+        
+        print(f"\nGetting long put at strike {long_put_strike}...")
+        retry_count = 0
+        while retry_count < max_retries:
+            long_put_options = tws.request_option_chain(put_long_expiry, "P", long_put_strike, long_put_strike)
+            if long_put_options:
+                break
+            retry_count += 1
+            print(f"Retry {retry_count}/{max_retries} getting long put...")
+            time.sleep(2)  # Wait before retry
+            
+        if not long_put_options:
+            print("Failed to get long put after all retries")
+            return
+        long_put = long_put_options[0]
+        
+        print(f"\nGetting long call at strike {long_call_strike}...")
+        retry_count = 0
+        while retry_count < max_retries:
+            long_call_options = tws.request_option_chain(call_long_expiry, "C", long_call_strike, long_call_strike)
+            if long_call_options:
+                break
+            retry_count += 1
+            print(f"Retry {retry_count}/{max_retries} getting long call...")
+            time.sleep(2)  # Wait before retry
+            
+        if not long_call_options:
+            print("Failed to get long call after all retries")
+            return
+        long_call = long_call_options[0]
+        
+        # Get prices
+        short_put_price = tws.get_option_price(short_put.contract)
+        short_call_price = tws.get_option_price(short_call.contract)
+        long_put_price = tws.get_option_price(long_put.contract)
+        long_call_price = tws.get_option_price(long_call.contract)
+        
+        # Calculate total debit
+        total_debit = (long_put_price - short_put_price) + (long_call_price - short_call_price)
+        
+        # Print summary
+        print("\n" + "="*50)
+        print("📅 DOUBLE CALENDAR SUMMARY")
+        print("="*50)
+        print(f"SPX Price: {spx_price:.2f}")
+        
+        print("\nPut Side:")
+        print(f"    Short {config.short_dte}D Put @ {short_put.contract.strike:.0f} for {short_put_price:.2f}")
+        print(f"    Long {config.put_long_dte}D Put @ {long_put.contract.strike:.0f} for {long_put_price:.2f}")
+        print(f"    Put Debit: {(long_put_price - short_put_price):.2f}")
+        
+        print("\nCall Side:")
+        print(f"    Short {config.short_dte}D Call @ {short_call.contract.strike:.0f} for {short_call_price:.2f}")
+        print(f"    Long {config.call_long_dte}D Call @ {long_call.contract.strike:.0f} for {long_call_price:.2f}")
+        print(f"    Call Debit: {(long_call_price - short_call_price):.2f}")
+        
+        print(f"\nTotal Debit: {total_debit:.2f}")
+        
+        # Submit the order
+        order_id = tws.submit_double_calendar(
+            short_put_contract=short_put.contract,
+            long_put_contract=long_put.contract,
+            short_call_contract=short_call.contract,
+            long_call_contract=long_call.contract,
+            quantity=config.quantity,
+            total_debit=total_debit
+        )
+        
+        print(f"\nOrder submitted with ID: {order_id}")
+        print("Monitoring order status for 5 minutes with price adjustments...")
+        
+        start_time = time.time()
+        original_debit = total_debit
+        
+        # First minute with original price
+        if not tws.monitor_order(order_id, timeout_seconds=config.initial_wait):
+            # Calculate 1% of original debit, rounded to nearest 0.05
+            increment = round(abs(original_debit) * config.price_increment_pct * 20) / 20
+            print(f"\nNot filled after 1 minute, increasing debit by {increment:.2f} (1%)...")
+            
+            # Cancel existing order
+            tws.cancel_order(order_id)
+            time.sleep(1)  # Wait for cancellation
+            
+            # Submit new order with higher debit
+            total_debit = original_debit + increment
+            order_id = tws.submit_double_calendar(
+                short_put_contract=short_put.contract,
+                long_put_contract=long_put.contract,
+                short_call_contract=short_call.contract,
+                long_call_contract=long_call.contract,
+                quantity=config.quantity,
+                total_debit=total_debit
+            )
+            print(f"New order submitted with ID: {order_id} at debit: {total_debit:.2f}")
+            
+            # Second minute with first price increase
+            if not tws.monitor_order(order_id, timeout_seconds=config.second_wait):
+                print(f"\nNot filled after 2 minutes, increasing debit by another {increment:.2f} (2%)...")
+                # Cancel existing order
+                tws.cancel_order(order_id)
+                time.sleep(1)  # Wait for cancellation
+                
+                # Submit order with second increase
+                total_debit = original_debit + (2 * increment)
+                order_id = tws.submit_double_calendar(
+                    short_put_contract=short_put.contract,
+                    long_put_contract=long_put.contract,
+                    short_call_contract=short_call.contract,
+                    long_call_contract=long_call.contract,
+                    quantity=config.quantity,
+                    total_debit=total_debit
+                )
+                print(f"New order submitted with ID: {order_id} at debit: {total_debit:.2f}")
+                
+                # Third minute with second price increase
+                if not tws.monitor_order(order_id, timeout_seconds=config.third_wait):
+                    print(f"\nNot filled after 3 minutes, increasing debit by another {increment:.2f} (3%)...")
+                    # Cancel existing order
+                    tws.cancel_order(order_id)
+                    time.sleep(1)  # Wait for cancellation
+                    
+                    # Submit order with third increase
+                    total_debit = original_debit + (3 * increment)
+                    order_id = tws.submit_double_calendar(
+                        short_put_contract=short_put.contract,
+                        long_put_contract=long_put.contract,
+                        short_call_contract=short_call.contract,
+                        long_call_contract=long_call.contract,
+                        quantity=config.quantity,
+                        total_debit=total_debit
+                    )
+                    print(f"New order submitted with ID: {order_id} at debit: {total_debit:.2f}")
+                    
+                    # Fourth minute with third price increase
+                    if not tws.monitor_order(order_id, timeout_seconds=config.fourth_wait):
+                        print(f"\nNot filled after 4 minutes, increasing debit by another {increment:.2f} (4%)...")
+                        # Cancel existing order
+                        tws.cancel_order(order_id)
+                        time.sleep(1)  # Wait for cancellation
+                        
+                        # Submit final order with highest debit
+                        total_debit = original_debit + (4 * increment)
+                        order_id = tws.submit_double_calendar(
+                            short_put_contract=short_put.contract,
+                            long_put_contract=long_put.contract,
+                            short_call_contract=short_call.contract,
+                            long_call_contract=long_call.contract,
+                            quantity=config.quantity,
+                            total_debit=total_debit
+                        )
+                        print(f"Final order submitted with ID: {order_id} at debit: {total_debit:.2f}")
+                        
+                        # Final minute with highest price
+                        if not tws.monitor_order(order_id, timeout_seconds=config.final_wait):
+                            print("\nNot filled after 5 minutes, canceling order...")
+                            tws.cancel_order(order_id)
+                            print("\nOrder cancelled after all attempts")
+        
+        print("\n" + "="*50)
+        
+    finally:
+        if tws is None:  # Only disconnect if we created the connection
+            print("\nDisconnecting from TWS...")
+            tws.disconnect()
+
+def execute_dc_config_2(tws=None):
+    """Wrapper function to execute DC_CONFIG_2"""
+    return execute_double_calendar(tws, config=DC_CONFIG_2)
+
 def main():
     """Main function that sets up the scheduler"""
     scheduler = TradeScheduler()
     
-    # Schedule the iron condor trade for 15:02 ET
+    # Schedule the first double calendar trade for 10:15 ET every Friday
     scheduler.add_trade(
-        trade_name="SPX Iron Condor",
-        time_et="15:02",
-        trade_func=execute_iron_condor
+        trade_name=DC_CONFIG.trade_name,  # Will generate "DC_3D_67D_3035_0"
+        time_et="10:15",
+        trade_func=execute_double_calendar
+    )
+    
+    # Schedule the second double calendar trade for 11:55 ET every Friday
+    scheduler.add_trade(
+        trade_name=DC_CONFIG_2.trade_name,  # Will generate "DC_5D_77D_5050_0"
+        time_et="11:55",
+        trade_func=execute_dc_config_2  # Using wrapper function instead of lambda
     )
     
     # List all scheduled trades
