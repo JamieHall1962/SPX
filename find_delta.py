@@ -362,7 +362,7 @@ class ConnectionManager:
         if self.tws is None:
             self.tws = TWSConnector(client_id=self.client_id)
         
-        if not self.tws.is_connected():
+        if not self.tws.isConnected():
             print("\nConnecting to TWS...")
             try:
                 self.tws.connect()
@@ -383,7 +383,7 @@ class ConnectionManager:
             
         self.last_check = current_time
         
-        if not self.tws or not self.tws.is_connected():
+        if not self.tws or not self.tws.isConnected():
             print("\nConnection lost, attempting to reconnect...")
             return self.connect()
         
@@ -397,7 +397,7 @@ class ConnectionManager:
     
     def disconnect(self):
         """Gracefully disconnect from TWS"""
-        if self.tws and self.tws.is_connected():
+        if self.tws and self.tws.isConnected():
             print("\nDisconnecting from TWS...")
             self.tws.disconnect()
             self.tws = None
@@ -689,15 +689,24 @@ def main():
     
     # Run the scheduler with connection monitoring
     try:
+        last_check = time.time()
         while True:
-            # Check connection status periodically
-            if not connection_manager.check_connection():
-                print("Unable to maintain TWS connection, retrying in 30 seconds...")
-                time.sleep(30)
-                continue
-                
-            scheduler.run(blocking=False)  # Non-blocking to allow connection checks
-            time.sleep(1)  # Sleep to prevent CPU spinning
+            current_time = time.time()
+            
+            # Check connection every 3 minutes
+            if current_time - last_check >= connection_manager.check_interval:
+                if not connection_manager.check_connection():
+                    print("Unable to maintain TWS connection, retrying in 30 seconds...")
+                    time.sleep(30)
+                    continue
+                last_check = current_time
+            
+            # Run one iteration of the scheduler
+            scheduler.run()
+            
+            # Sleep for a short time to prevent CPU spinning
+            # but still allow for responsive connection checks
+            time.sleep(1)
             
     except KeyboardInterrupt:
         print("\nShutting down scheduler...")
