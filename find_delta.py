@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import pytz
 from trade_scheduler import TradeScheduler
 from trade_config import TradeConfig, DC_CONFIG, DC_CONFIG_2, DC_CONFIG_3, DC_CONFIG_4
+from trade_database import TradeDatabase
 
 def is_market_hours():
     """Check if we can get quotes (20:15 - 16:00 ET, Mon-Fri)"""
@@ -355,6 +356,7 @@ class ConnectionManager:
         self.check_interval = check_interval
         self.tws = None
         self.last_check = 0
+        self.db = TradeDatabase()  # Initialize database
         self.connect()
     
     def connect(self):
@@ -406,6 +408,12 @@ def execute_double_calendar(connection_manager: ConnectionManager, config: Trade
     """Execute a double calendar trade strategy"""
     tws = connection_manager.get_tws()
     if not tws:
+        connection_manager.db.record_trade_attempt(
+            config=config,
+            spx_price=None,
+            status="FAILED",
+            reason_if_failed="No TWS connection available"
+        )
         print("No TWS connection available")
         return
     
@@ -417,6 +425,12 @@ def execute_double_calendar(connection_manager: ConnectionManager, config: Trade
             # Check connection before each major operation
             tws = connection_manager.get_tws()
             if not tws:
+                connection_manager.db.record_trade_attempt(
+                    config=config,
+                    spx_price=None,
+                    status="FAILED",
+                    reason_if_failed="Lost connection during price retrieval"
+                )
                 print("Lost connection during price retrieval")
                 return
                 
@@ -439,11 +453,24 @@ def execute_double_calendar(connection_manager: ConnectionManager, config: Trade
             time.sleep(2)
         
         if tws.spx_price is None:
+            connection_manager.db.record_trade_attempt(
+                config=config,
+                spx_price=None,
+                status="FAILED",
+                reason_if_failed="Failed to get SPX price after all retries"
+            )
             print("Failed to get SPX price after all retries")
             return
             
         spx_price = tws.spx_price
         print(f"\nSPX Price: {spx_price:.2f}")
+        
+        # Start recording trade attempt
+        trade_id = connection_manager.db.record_trade_attempt(
+            config=config,
+            spx_price=spx_price,
+            status="STARTED"
+        )
         
         # Get expiries
         short_expiry = get_expiry_from_dte(config.short_dte)
@@ -531,6 +558,12 @@ def execute_double_calendar(connection_manager: ConnectionManager, config: Trade
         
         print(f"\nTotal Debit: {total_debit:.2f}")
         
+        # Record option legs
+        connection_manager.db.record_option_leg(trade_id, "short_put", short_put)
+        connection_manager.db.record_option_leg(trade_id, "long_put", long_put)
+        connection_manager.db.record_option_leg(trade_id, "short_call", short_call)
+        connection_manager.db.record_option_leg(trade_id, "long_call", long_call)
+        
         # Submit the order
         order_id = tws.submit_double_calendar(
             short_put_contract=short_put.contract,
@@ -539,6 +572,15 @@ def execute_double_calendar(connection_manager: ConnectionManager, config: Trade
             long_call_contract=long_call.contract,
             quantity=config.quantity,
             total_debit=total_debit
+        )
+        
+        # Update trade attempt with initial order details
+        connection_manager.db.record_trade_attempt(
+            config=config,
+            spx_price=spx_price,
+            status="ORDER_SUBMITTED",
+            initial_debit=total_debit,
+            order_id=order_id
         )
         
         print(f"\nOrder submitted with ID: {order_id}")
@@ -552,6 +594,14 @@ def execute_double_calendar(connection_manager: ConnectionManager, config: Trade
             # Calculate 1% of original debit, rounded to nearest 0.05
             increment = round(abs(original_debit) * config.price_increment_pct * 20) / 20
             print(f"\nNot filled after 1 minute, increasing debit by {increment:.2f} (1%)...")
+            
+            # Record price adjustment
+            connection_manager.db.record_price_adjustment(
+                trade_id,
+                old_debit=total_debit,
+                new_debit=total_debit + increment,
+                adjustment_number=1
+            )
             
             # Cancel existing order
             tws.cancel_order(order_id)
@@ -631,13 +681,41 @@ def execute_double_calendar(connection_manager: ConnectionManager, config: Trade
                             print("\nNot filled after 5 minutes, canceling order...")
                             tws.cancel_order(order_id)
                             print("\nOrder cancelled after all attempts")
+            
+            # If we reach here, the order was not filled after all attempts
+            connection_manager.db.record_trade_attempt(
+                config=config,
+                spx_price=spx_price,
+                status="NOT_FILLED",
+                reason_if_failed="Not filled after all price adjustments",
+                initial_debit=original_debit,
+                final_debit=total_debit,
+                order_id=order_id
+            )
+        else:
+            # Order was filled
+            fill_time = datetime.now(pytz.timezone('US/Eastern')).isoformat()
+            connection_manager.db.record_trade_attempt(
+                config=config,
+                spx_price=spx_price,
+                status="FILLED",
+                initial_debit=original_debit,
+                final_debit=total_debit,
+                fill_time=fill_time,
+                order_id=order_id
+            )
         
         print("\n" + "="*50)
         
-    finally:
-        if tws is None:  # Only disconnect if we created the connection
-            print("\nDisconnecting from TWS...")
-            tws.disconnect()
+    except Exception as e:
+        # Record any unexpected errors
+        connection_manager.db.record_trade_attempt(
+            config=config,
+            spx_price=spx_price if 'spx_price' in locals() else None,
+            status="ERROR",
+            reason_if_failed=str(e)
+        )
+        raise
 
 def execute_dc_config_2(connection_manager):
     """Wrapper function to execute DC_CONFIG_2"""
