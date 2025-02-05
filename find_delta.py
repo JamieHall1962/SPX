@@ -1,10 +1,14 @@
-from tws_connector import TWSConnector
+from tws_connector import TWSConnector, OptionPosition
 import time
 from datetime import datetime, timedelta
 import pytz
 from trade_scheduler import TradeScheduler
-from trade_config import TradeConfig, DC_CONFIG, DC_CONFIG_2, DC_CONFIG_3, DC_CONFIG_4
+from trade_config import TradeConfig, DC_CONFIG, DC_CONFIG_2, DC_CONFIG_3, DC_CONFIG_4, DC_CONFIG_5, DC_CONFIG_6
 from trade_database import TradeDatabase
+import sys
+import threading
+from typing import Optional
+import queue
 
 def is_market_hours():
     """Check if we can get quotes (20:15 - 16:00 ET, Mon-Fri)"""
@@ -39,100 +43,214 @@ def get_expiry_from_dte(dte: int) -> str:
         
     return expiry_date.strftime('%Y%m%d')
 
-def find_target_delta_option(tws, expiry: str, right: str, initial_strike: float, target_delta: float = 0.15):
-    """Search for an option with target delta using binary search"""
-    # Keep track of the best option we've found
-    best_delta_diff = float('inf')
-    best_option = None
+def find_target_delta_option(tws: TWSConnector, expiry: str, right: str, initial_strike: float, target_delta: float = 0.15) -> Optional[OptionPosition]:
+    """Find an option with a target delta or premium using binary search"""
+    print(f"\nLooking for {right} option with target delta/premium: {target_delta}")
     
-    # Keep track of strikes we've tried to avoid loops
-    tried_strikes = set()
+    # Determine if we're searching by delta or premium
+    searching_by_premium = target_delta > 1.0
+    search_type = "premium" if searching_by_premium else "delta"
+    print(f"Searching by {search_type}")
     
-    # Track high and low bounds to help with binary search
-    high_strike = None  # Strike that gave delta < target
-    low_strike = None   # Strike that gave delta > target
-    
-    current_strike = initial_strike
-    target_delta = target_delta if right == "C" else -target_delta  # Negative for puts
-    
-    print(f"\nSearching for {abs(target_delta):.2f} delta {right}...")
-    
-    while True:
-        if current_strike in tried_strikes:
-            break
-            
-        print(f"\nTrying strike {current_strike}...")
-        tried_strikes.add(current_strike)
+    # For puts searching by premium, adjust initial strike based on DTE
+    if searching_by_premium:
+        current_spx = tws.spx_price  # Get current SPX price
+        print(f"Current SPX price: {current_spx}")
         
-        options = tws.request_option_chain(expiry, right, current_strike, current_strike, target_delta=abs(target_delta))
-        
-        if not options:
-            print("No options returned from request")
-            return None
-            
-        current_delta = options[0].delta
-        current_diff = abs(current_delta - target_delta)
-        print(f"Found option with delta: {current_delta:.4f} (diff: {current_diff:.4f})")
-        
-        # Keep track of the best option we've found
-        if current_diff < best_delta_diff:
-            best_delta_diff = current_diff
-            best_option = options[0]
-            print(f"New best option found! Delta: {current_delta:.4f}")
-        
-        # If we're within 0.01 of target, we'll take it
-        if abs(current_delta - target_delta) <= 0.01:
-            print(f"\nFound excellent option!")
-            print(f"Strike: {options[0].contract.strike}")
-            print(f"Delta: {current_delta:.4f}")
-            print(f"IV: {options[0].implied_vol:.4f}")
-            print(f"Symbol: {options[0].contract.localSymbol}")
-            return options[0]
-            
-        # Update our bounds and use them to make a better guess
-        if current_delta > target_delta:
-            low_strike = current_strike
-            if high_strike is None:
-                # First time above target
-                if right == "C":
-                    # For calls: delta too high, move strike up
-                    adjustment = 25
-                else:
-                    # For puts: delta too high (e.g. -0.10), move strike up
-                    adjustment = 25
-            else:
-                adjustment = (high_strike - current_strike) // 2
+        if expiry == get_expiry_from_dte(0):  # If it's 0DTE
+            # For 0DTE puts targeting $1.60, start slightly OTM
+            # For 0DTE calls targeting $1.30, start slightly OTM
+            if right == "P":
+                # Start about 20-30 points BELOW current price for puts
+                initial_strike = round((current_spx - 25) / 5) * 5
+                strike_increment = 5  # Use 5-point increments
+            else:  # Calls
+                # Start about 20-30 points ABOVE current price for calls
+                initial_strike = round((current_spx + 25) / 5) * 5
+                strike_increment = 5  # Use 5-point increments
+            print(f"0DTE option - starting at strike {initial_strike} ({'+' if initial_strike > current_spx else '-'}{abs(initial_strike - current_spx)} points from current price)")
         else:
-            high_strike = current_strike
-            if low_strike is None:
-                # First time below target
-                if right == "C":
-                    # For calls: delta too low, move strike down
-                    adjustment = -25
-                else:
-                    # For puts: delta too low (e.g. -0.20), move strike down
-                    adjustment = -25
+            # For longer dated options, can start further OTM
+            if right == "P":
+                initial_strike = round((current_spx - 50) / 5) * 5
             else:
-                adjustment = (low_strike - current_strike) // 2
-        
-        # Ensure adjustment is at least 5 points
-        if abs(adjustment) < 5:
-            adjustment = 5 if adjustment > 0 else -5
-            
-        # Round to nearest 5
-        current_strike = round((current_strike + adjustment) / 5) * 5
-        print(f"Adjusting strike by {adjustment} to {current_strike}")
-        
-        time.sleep(1)  # Add delay between attempts
+                initial_strike = round((current_spx + 50) / 5) * 5
+            strike_increment = 5
+    else:
+        strike_increment = 5  # Standard increment for delta-based search
     
-    # If we didn't find an excellent option, use the best one we found
-    if best_option:
-        print(f"\nUsing best option found:")
-        print(f"Strike: {best_option.contract.strike}")
-        print(f"Delta: {best_option.delta:.4f}")
-        print(f"IV: {best_option.implied_vol:.4f}")
-        print(f"Symbol: {best_option.contract.localSymbol}")
+    # Get initial option chain
+    options = tws.request_option_chain(expiry, right, initial_strike, initial_strike)
+    if not options:
+        print("No options found")
+        return None
         
+    # Get initial option's delta or premium
+    if searching_by_premium:
+        # Request bid/ask for accurate pricing
+        req_id = tws.get_next_req_id()
+        tws.reqMktData(req_id, options[0].contract, "100,101", False, False, [])  # Request bid/ask
+        
+        # Wait for bid/ask data
+        bid = ask = None
+        timeout = time.time() + 2
+        while time.time() < timeout and (bid is None or ask is None):
+            try:
+                msg = tws.data_queue.get(timeout=0.1)
+                if msg[0] == 'price' and msg[1] == req_id:
+                    if msg[2] == 1:  # Bid
+                        bid = msg[3]
+                    elif msg[2] == 2:  # Ask
+                        ask = msg[3]
+            except queue.Empty:
+                continue
+        
+        tws.cancelMktData(req_id)
+        
+        if bid is not None and ask is not None:
+            current_value = round(((bid + ask) / 2) * 20) / 20  # Round to nearest 0.05
+            print(f"Initial {right} option price: {current_value:.2f} (bid: {bid:.2f}, ask: {ask:.2f})")
+        else:
+            print("Failed to get bid/ask data")
+            return None
+    else:
+        current_value = options[0].delta if options[0].delta is not None else 0
+        print(f"Initial {right} option delta: {current_value:.3f}")
+    
+    # Initialize search variables
+    best_option = options[0]
+    best_diff = abs(current_value - target_delta)
+    
+    # For premium-based search, we'll track options above and below target
+    if searching_by_premium:
+        # Search both up and down from initial strike
+        current_strike = initial_strike
+        all_options = []  # Store all options we find
+        max_strikes = 20  # Maximum number of strikes to check in each direction
+        
+        # Search downward (higher premium for puts, lower for calls)
+        for i in range(max_strikes):
+            strike = current_strike - (i * strike_increment)
+            options = tws.request_option_chain(expiry, right, strike, strike)
+            if options:
+                # Get accurate pricing using bid/ask
+                req_id = tws.get_next_req_id()
+                tws.reqMktData(req_id, options[0].contract, "100,101", False, False, [])
+                
+                bid = ask = None
+                timeout = time.time() + 2
+                while time.time() < timeout and (bid is None or ask is None):
+                    try:
+                        msg = tws.data_queue.get(timeout=0.1)
+                        if msg[0] == 'price' and msg[1] == req_id:
+                            if msg[2] == 1:  # Bid
+                                bid = msg[3]
+                            elif msg[2] == 2:  # Ask
+                                ask = msg[3]
+                    except queue.Empty:
+                        continue
+                
+                tws.cancelMktData(req_id)
+                
+                if bid is not None and ask is not None:
+                    premium = round(((bid + ask) / 2) * 20) / 20  # Round to nearest 0.05
+                    print(f"Strike {strike}: premium = {premium:.2f} (bid: {bid:.2f}, ask: {ask:.2f})")
+                    all_options.append((options[0], premium))
+                    if premium > target_delta * 1.5:  # Stop if premium gets too high
+                        break
+        
+        # Search upward (lower premium for puts, higher for calls)
+        for i in range(1, max_strikes):  # Start at 1 to skip initial strike
+            strike = current_strike + (i * strike_increment)
+            options = tws.request_option_chain(expiry, right, strike, strike)
+            if options:
+                # Get accurate pricing using bid/ask
+                req_id = tws.get_next_req_id()
+                tws.reqMktData(req_id, options[0].contract, "100,101", False, False, [])
+                
+                bid = ask = None
+                timeout = time.time() + 2
+                while time.time() < timeout and (bid is None or ask is None):
+                    try:
+                        msg = tws.data_queue.get(timeout=0.1)
+                        if msg[0] == 'price' and msg[1] == req_id:
+                            if msg[2] == 1:  # Bid
+                                bid = msg[3]
+                            elif msg[2] == 2:  # Ask
+                                ask = msg[3]
+                    except queue.Empty:
+                        continue
+                
+                tws.cancelMktData(req_id)
+                
+                if bid is not None and ask is not None:
+                    premium = round(((bid + ask) / 2) * 20) / 20  # Round to nearest 0.05
+                    print(f"Strike {strike}: premium = {premium:.2f} (bid: {bid:.2f}, ask: {ask:.2f})")
+                    all_options.append((options[0], premium))
+                    if premium < target_delta * 0.5:  # Stop if premium gets too low
+                        break
+        
+        # Find option with premium closest to target
+        if all_options:
+            best_option, _ = min(all_options, key=lambda x: abs(x[1] - target_delta))
+            # Get final bid/ask for best option
+            req_id = tws.get_next_req_id()
+            tws.reqMktData(req_id, best_option.contract, "100,101", False, False, [])
+            
+            bid = ask = None
+            timeout = time.time() + 2
+            while time.time() < timeout and (bid is None or ask is None):
+                try:
+                    msg = tws.data_queue.get(timeout=0.1)
+                    if msg[0] == 'price' and msg[1] == req_id:
+                        if msg[2] == 1:  # Bid
+                            bid = msg[3]
+                        elif msg[2] == 2:  # Ask
+                            ask = msg[3]
+                except queue.Empty:
+                    continue
+            
+            tws.cancelMktData(req_id)
+            
+            if bid is not None and ask is not None:
+                best_diff = abs(round(((bid + ask) / 2) * 20) / 20 - target_delta)
+    
+    if best_option:
+        if searching_by_premium:
+            # Get final bid/ask for display
+            req_id = tws.get_next_req_id()
+            tws.reqMktData(req_id, best_option.contract, "100,101", False, False, [])
+            
+            bid = ask = None
+            timeout = time.time() + 2
+            while time.time() < timeout and (bid is None or ask is None):
+                try:
+                    msg = tws.data_queue.get(timeout=0.1)
+                    if msg[0] == 'price' and msg[1] == req_id:
+                        if msg[2] == 1:  # Bid
+                            bid = msg[3]
+                        elif msg[2] == 2:  # Ask
+                            ask = msg[3]
+                except queue.Empty:
+                    continue
+            
+            tws.cancelMktData(req_id)
+            
+            if bid is not None and ask is not None:
+                final_value = round(((bid + ask) / 2) * 20) / 20  # Round to nearest 0.05
+                print(f"\nFound {right} option:")
+                print(f"Strike: {best_option.contract.strike}")
+                print(f"Premium: {final_value:.2f} (bid: {bid:.2f}, ask: {ask:.2f}, target: {target_delta:.2f})")
+                best_option.market_price = final_value  # Store the price
+        else:
+            print(f"\nFound {right} option:")
+            print(f"Strike: {best_option.contract.strike}")
+            print(f"Delta: {best_option.delta:.3f} (target: {target_delta:.3f})")
+            
+        # Set up exit monitoring if this is a short option with premium > 1.0
+        if searching_by_premium:
+            best_option.exit_price = best_option.contract.strike + (2 if right == "P" else -2)
+    
     return best_option
 
 def execute_iron_condor(tws: TWSConnector = None):
@@ -351,29 +469,101 @@ def execute_iron_condor(tws: TWSConnector = None):
             tws.disconnect()
 
 class ConnectionManager:
-    def __init__(self, client_id=99, check_interval=180):  # Check every 3 minutes
+    def __init__(self, client_id=99, check_interval=180, stop_event=None):  # Check every 3 minutes
         self.client_id = client_id
         self.check_interval = check_interval
+        self.stop_event = stop_event
         self.tws = None
         self.last_check = 0
         self.db = TradeDatabase()  # Initialize database
-        self.connect()
+        self.connection_attempts = 0
+        self.max_attempts_before_restart = 3
+        self.connect_with_retry()
+    
+    def connect_with_retry(self, max_retries=5, retry_delay=10):
+        """Establish connection to TWS with retries"""
+        self.connection_attempts += 1
+        retry_count = 0
+        
+        while retry_count < max_retries:
+            if self.stop_event and self.stop_event.is_set():
+                print("\nStop requested during connection attempt")
+                return False
+                
+            try:
+                print(f"\nAttempting to connect to TWS (attempt {retry_count + 1}/{max_retries})...")
+                if self.connect():
+                    print("Successfully connected to TWS")
+                    self.connection_attempts = 0  # Reset counter on successful connection
+                    return True
+                    
+                # If we get here, connect() returned False
+                if self.connection_attempts >= self.max_attempts_before_restart:
+                    print("\n⚠️ CRITICAL: Multiple connection attempts failed!")
+                    print("This usually means TWS/IB Gateway needs to be restarted.")
+                    print("Please:")
+                    print("1. Close Cursor")
+                    print("2. Restart TWS/IB Gateway")
+                    print("3. Wait 30 seconds")
+                    print("4. Restart Cursor")
+                    print("\nWaiting for 60 seconds before next attempt...")
+                    time.sleep(60)
+                    self.connection_attempts = 0  # Reset counter
+                    
+            except Exception as e:
+                print(f"Connection attempt {retry_count + 1} failed: {str(e)}")
+            
+            retry_count += 1
+            if retry_count < max_retries:
+                print(f"Waiting {retry_delay} seconds before next attempt...")
+                time.sleep(retry_delay)
+        
+        print("Failed to connect after all retries")
+        return False
     
     def connect(self):
         """Establish connection to TWS"""
-        if self.tws is None:
+        try:
+            # If we have an existing TWS instance, try to clean it up
+            if self.tws is not None:
+                try:
+                    self.tws.disconnect()
+                except:
+                    pass
+                time.sleep(1)  # Give TWS time to clean up the old connection
+                self.tws = None
+            
+            # Create fresh TWS instance
             self.tws = TWSConnector(client_id=self.client_id)
-        
-        if not self.tws.isConnected():
+            
+            # Connect with proper cleanup timing
             print("\nConnecting to TWS...")
-            try:
-                self.tws.connect()
-                time.sleep(1)  # Wait for connection to stabilize
-                print("Successfully connected to TWS")
-            except Exception as e:
-                print(f"Failed to connect to TWS: {str(e)}")
-                return False
-        return True
+            self.tws.connect()
+            
+            # Wait for nextValidId and full initialization
+            timeout = time.time() + 10  # 10 second timeout
+            while time.time() < timeout:
+                if self.tws.isConnected() and self.tws.next_order_id is not None:
+                    # Additional wait for complete initialization
+                    time.sleep(2)
+                    return True
+                time.sleep(0.1)
+            
+            # If we get here, connection failed or nextValidId wasn't received
+            print("Connection failed: Did not receive initialization confirmation")
+            self.tws = None
+            return False
+            
+        except Exception as e:
+            print(f"Connection error: {str(e)}")
+            # Clean up failed connection
+            if self.tws is not None:
+                try:
+                    self.tws.disconnect()
+                except:
+                    pass
+                self.tws = None
+            return False
     
     def check_connection(self):
         """Check connection status and reconnect if needed"""
@@ -381,13 +571,16 @@ class ConnectionManager:
         
         # Only check every check_interval seconds
         if current_time - self.last_check < self.check_interval:
-            return True
-            
+            # Still do a quick check of connection status
+            if self.tws and self.tws.isConnected():
+                return True
+            print("\nConnection lost between regular checks")
+        
         self.last_check = current_time
         
         if not self.tws or not self.tws.isConnected():
             print("\nConnection lost, attempting to reconnect...")
-            return self.connect()
+            return self.connect_with_retry()
         
         return True
     
@@ -729,69 +922,219 @@ def execute_dc_config_4(connection_manager):
     """Wrapper function to execute DC_CONFIG_4"""
     return execute_double_calendar(connection_manager, config=DC_CONFIG_4)
 
-def main():
+def execute_dc_config_5(connection_manager):
+    """Wrapper function to execute DC_CONFIG_5"""
+    return execute_double_calendar(connection_manager, config=DC_CONFIG_5)
+
+def execute_dc_config_6(connection_manager):
+    """Wrapper function to execute DC_CONFIG_6"""
+    return execute_double_calendar(connection_manager, config=DC_CONFIG_6)
+
+def check_recent_trades():
+    """Check the most recent trades in the database"""
+    db = TradeDatabase()
+    print("\nQuerying recent trades...")
+    recent_trades = db.get_recent_trades(limit=5)
+    print(f"Found {len(recent_trades)} trades")
+    
+    if not recent_trades:
+        print("No trades found in database")
+        return
+        
+    print("\nMost Recent Trades:")
+    for trade_details in recent_trades:
+        db.print_trade_summary(trade_details)
+
+def main(stop_event=None, message_queue=None):
     """Main function that sets up the scheduler and connection manager"""
-    connection_manager = ConnectionManager(client_id=99, check_interval=180)
-    scheduler = TradeScheduler()
+    start_time = time.time()  # Track system uptime
+    last_check = time.time()
+    last_status_check = time.time()  # For more frequent status updates
+    consecutive_failures = 0
+    max_consecutive_failures = 3
     
-    # Schedule the first double calendar trade for 10:15 ET every Friday
-    scheduler.add_trade(
-        trade_name=DC_CONFIG.trade_name,
-        time_et="10:15",
-        trade_func=lambda: execute_double_calendar(connection_manager)
-    )
+    def log_message(msg):
+        """Log a message to console and queue if available"""
+        print(msg)
+        if message_queue:
+            message_queue.put(msg)
     
-    # Schedule the second double calendar trade for 11:55 ET every Friday
-    scheduler.add_trade(
-        trade_name=DC_CONFIG_2.trade_name,
-        time_et="11:55",
-        trade_func=lambda: execute_dc_config_2(connection_manager)
-    )
-    
-    # Schedule the third double calendar trade for 13:00 ET every Friday
-    scheduler.add_trade(
-        trade_name=DC_CONFIG_3.trade_name,
-        time_et="13:00",
-        trade_func=lambda: execute_dc_config_3(connection_manager)
-    )
-    
-    # Schedule the fourth double calendar trade for 14:10 ET every Friday
-    scheduler.add_trade(
-        trade_name=DC_CONFIG_4.trade_name,
-        time_et="14:10",
-        trade_func=lambda: execute_dc_config_4(connection_manager)
-    )
-    
-    # List all scheduled trades
-    scheduler.list_trades()
-    
-    # Run the scheduler with connection monitoring
-    try:
-        last_check = time.time()
-        while True:
-            current_time = time.time()
+    def update_status(connection_manager, scheduler):
+        """Send a status update to the dashboard"""
+        if not message_queue:
+            return
             
-            # Check connection every 3 minutes
-            if current_time - last_check >= connection_manager.check_interval:
-                if not connection_manager.check_connection():
-                    print("Unable to maintain TWS connection, retrying in 30 seconds...")
+        et_now = datetime.now(pytz.timezone('US/Eastern'))
+        is_connected = False
+        
+        if connection_manager and connection_manager.tws:
+            try:
+                is_connected = (connection_manager.tws.isConnected() and 
+                              connection_manager.tws.next_order_id is not None)
+            except:
+                is_connected = False
+        
+        connection_status = "✅ CONNECTED" if is_connected else "❌ DISCONNECTED"
+        
+        # Find next scheduled trade
+        next_trade = scheduler.get_next_trade() if scheduler else None
+        next_trade_str = f"{next_trade['day']} {next_trade['time_et']} ET - {next_trade['name']}" if next_trade else "None"
+        
+        # Calculate uptime
+        uptime_seconds = int(time.time() - start_time)
+        uptime_hours = uptime_seconds // 3600
+        uptime_minutes = (uptime_seconds % 3600) // 60
+        
+        log_message(f"Connection: {connection_status}")
+        log_message(f"Next Trade: {next_trade_str}")
+        log_message(f"Market Hours: {'Yes' if is_market_hours() else 'No'}")
+        log_message(f"Uptime: {uptime_hours}h {uptime_minutes}m")
+    
+    connection_manager = None
+    scheduler = None
+    
+    try:
+        while True:
+            if stop_event and stop_event.is_set():
+                log_message("\nShutdown requested. Stopping trading system...")
+                if connection_manager:
+                    connection_manager.disconnect()
+                return  # Exit immediately
+                
+            try:
+                # Initialize connection manager if needed
+                if not connection_manager:
+                    connection_manager = ConnectionManager(client_id=99, check_interval=180, stop_event=stop_event)
+                
+                # Verify we have a valid connection before proceeding
+                if not connection_manager.tws or not connection_manager.tws.isConnected():
+                    log_message("\nFailed to establish connection. Cannot proceed without valid connection.")
+                    update_status(connection_manager, scheduler)
+                    log_message("Waiting 30 seconds before retry...")
                     time.sleep(30)
                     continue
-                last_check = current_time
-            
-            # Run one iteration of the scheduler
-            scheduler.run()
-            
-            # Sleep for a short time to prevent CPU spinning
-            # but still allow for responsive connection checks
-            time.sleep(1)
-            
-    except KeyboardInterrupt:
-        print("\nShutting down scheduler...")
+                    
+                # Initialize scheduler if needed
+                if not scheduler:
+                    scheduler = TradeScheduler()
+                    
+                    # Schedule all trades
+                    # Schedule the first double calendar trade for 10:15 ET every Friday
+                    scheduler.add_trade(
+                        trade_name=DC_CONFIG.trade_name,
+                        time_et="10:15",
+                        trade_func=lambda: execute_double_calendar(connection_manager)
+                    )
+                    
+                    # Schedule the second double calendar trade for 11:55 ET every Friday
+                    scheduler.add_trade(
+                        trade_name=DC_CONFIG_2.trade_name,
+                        time_et="11:55",
+                        trade_func=lambda: execute_dc_config_2(connection_manager)
+                    )
+                    
+                    # Schedule the third double calendar trade for 13:00 ET every Friday
+                    scheduler.add_trade(
+                        trade_name=DC_CONFIG_3.trade_name,
+                        time_et="13:00",
+                        trade_func=lambda: execute_dc_config_3(connection_manager)
+                    )
+                    
+                    # Schedule the fourth double calendar trade for 14:10 ET every Friday
+                    scheduler.add_trade(
+                        trade_name=DC_CONFIG_4.trade_name,
+                        time_et="14:10",
+                        trade_func=lambda: execute_dc_config_4(connection_manager)
+                    )
+                    
+                    # Schedule the fifth double calendar trade for 12:00 ET every Monday
+                    scheduler.add_trade(
+                        trade_name=DC_CONFIG_5.trade_name,  # Will generate "DC_3D_77D_1217_0"
+                        time_et="12:00",
+                        trade_func=lambda: execute_dc_config_5(connection_manager),
+                        day="Monday"
+                    )
+                    
+                    # Schedule the sixth double calendar trade for 13:30 ET every Monday
+                    scheduler.add_trade(
+                        trade_name=DC_CONFIG_6.trade_name,  # Will generate "DC_1D_44D_2525_0"
+                        time_et="13:30",
+                        trade_func=lambda: execute_dc_config_6(connection_manager),
+                        day="Monday"
+                    )
+                    
+                    scheduler.list_trades()
+                    log_message("\n⚡ Trade scheduler is running...")
+                    log_message("Monitoring connection and waiting for scheduled trades...")
+                
+                # Main operation loop
+                while True:
+                    if stop_event and stop_event.is_set():
+                        log_message("\nShutdown requested. Stopping trading system...")
+                        connection_manager.disconnect()
+                        return  # Exit immediately
+                        
+                    current_time = time.time()
+                    
+                    # Update status every 5 seconds
+                    if current_time - last_status_check >= 5:
+                        update_status(connection_manager, scheduler)
+                        last_status_check = current_time
+                    
+                    # Connection check
+                    if current_time - last_check >= connection_manager.check_interval:
+                        if not connection_manager.check_connection():
+                            consecutive_failures += 1
+                            log_message(f"Connection check failed ({consecutive_failures}/{max_consecutive_failures})")
+                            update_status(connection_manager, scheduler)
+                            
+                            if consecutive_failures >= max_consecutive_failures:
+                                log_message("Too many consecutive connection failures. Restarting entire system...")
+                                connection_manager.disconnect()
+                                connection_manager = None  # Force reconnection
+                                break
+                            
+                            log_message("Waiting 30 seconds before retry...")
+                            time.sleep(30)
+                            continue
+                        else:
+                            consecutive_failures = 0
+                        last_check = current_time
+                    
+                    if is_market_hours():
+                        if not connection_manager.tws or not connection_manager.tws.isConnected():
+                            log_message("\nConnection lost, attempting to reconnect...")
+                            update_status(connection_manager, scheduler)
+                            if not connection_manager.connect_with_retry():
+                                log_message("Failed to reconnect. Restarting entire system...")
+                                connection_manager = None  # Force reconnection
+                                break
+                            continue
+                        scheduler.run()
+                    
+                    time.sleep(0.1 if is_market_hours() else 1.0)
+                    
+            except Exception as e:
+                log_message(f"\nUnexpected error: {str(e)}")
+                log_message("Restarting entire system...")
+                if connection_manager:
+                    connection_manager.disconnect()
+                    connection_manager = None  # Force reconnection
+                time.sleep(30)
+                continue
+                
     finally:
-        # Connection will be maintained until explicitly disconnected
-        # This allows for future dashboard integration
-        pass
+        # Ensure clean shutdown
+        if connection_manager:
+            try:
+                connection_manager.disconnect()
+            except:
+                pass
+        log_message("\nTrading system shutdown complete.")
 
 if __name__ == "__main__":
-    main() 
+    # Check if we want to view recent trades
+    if len(sys.argv) > 1 and sys.argv[1] == "--show-trades":
+        check_recent_trades()
+    else:
+        main() 

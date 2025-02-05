@@ -87,12 +87,53 @@ class IBWrapper(EWrapper):
     
     def tickPrice(self, reqId, tickType, price, attrib):
         """Called when price tick data is received"""
+        # Debug print all ticks
+        # print(f"\nTick received - reqId: {reqId}, type: {tickType}, price: {price}")
+        
         # Store in queue for processing
         self.data_queue.put(('price', reqId, tickType, price))
         
         # For SPX index (main underlying)
         if reqId == 1 and tickType == 4:  # Last price
             self.spx_price = price
+            # print(f"Updated SPX price: {price}")
+            
+            # Check exit conditions if monitoring
+            if hasattr(self, 'put_exit_price') and hasattr(self, 'call_exit_price'):
+                if price <= self.put_exit_price:
+                    print(f"\n⚠️ SPX price {price} has breached put exit level {self.put_exit_price}")
+                    if hasattr(self, 'put_exit_order') and hasattr(self, 'short_put_contract'):
+                        # Submit market order to close put
+                        order_id = self.next_order_id
+                        self.next_order_id += 1
+                        print("\nSubmitting market order to close short put")
+                        self.placeOrder(order_id, self.short_put_contract, self.put_exit_order)
+                        # Clear exit monitoring for put side
+                        del self.put_exit_price
+                        del self.put_exit_order
+                        del self.short_put_contract
+                        
+                elif price >= self.call_exit_price:
+                    print(f"\n⚠️ SPX price {price} has breached call exit level {self.call_exit_price}")
+                    if hasattr(self, 'call_exit_order') and hasattr(self, 'short_call_contract'):
+                        # Submit market order to close call
+                        order_id = self.next_order_id
+                        self.next_order_id += 1
+                        print("\nSubmitting market order to close short call")
+                        self.placeOrder(order_id, self.short_call_contract, self.call_exit_order)
+                        # Clear exit monitoring for call side
+                        del self.call_exit_price
+                        del self.call_exit_order
+                        del self.short_call_contract
+                        
+        # For ES futures - only use last price
+        elif reqId == 2 and tickType == 4:  # Last price
+            # print(f"Updating ES price from {self.es_price} to {price}")
+            self.es_price = price
+            # print(f"Updated ES price: {price}")
+            
+        # Print current state of both prices
+        # print(f"Current prices - SPX: {self.spx_price}, ES: {self.es_price}")
     
     def tickOption(self, reqId, tickType, impliedVol, delta, gamma, vega, theta, undPrice):
         """Called when option tick data is received"""
@@ -169,6 +210,7 @@ class TWS(EClient):
             
 class TWSConnector(IBWrapper, TWS):
     spx_price = None  # Class attribute
+    es_price = None   # Class attribute for ES futures
     
     def __init__(self, host='127.0.0.1', port=7496, client_id=1):
         # Initialize parent classes
@@ -261,6 +303,66 @@ class TWSConnector(IBWrapper, TWS):
         
         return contract
 
+    def get_es_contract(self):
+        """Create a contract for ES futures"""
+        contract = Contract()
+        contract.symbol = "ES"
+        contract.secType = "FUT"
+        contract.exchange = "CME"
+        contract.currency = "USD"
+        contract.multiplier = "50"
+        
+        # Get the front month contract
+        # For ES, contracts expire on 3rd Friday of Mar, Jun, Sep, Dec
+        now = datetime.now(self.et_timezone)
+        months = {3: 'H', 6: 'M', 9: 'U', 12: 'Z'}
+        current_month = now.month
+        current_year = now.year
+        
+        # Find next expiration month
+        for month in [3, 6, 9, 12]:
+            if month > current_month:
+                expiry_month = month
+                break
+        else:
+            expiry_month = 3  # If we're past Dec, use March of next year
+            current_year += 1
+            
+        # Format expiration as YYYYMM
+        contract.lastTradeDateOrContractMonth = f"{current_year}{expiry_month:02d}"
+        
+        print(f"\nCreated ES contract:")
+        print(f"Symbol: {contract.symbol}")
+        print(f"Expiry: {contract.lastTradeDateOrContractMonth}")
+        print(f"Exchange: {contract.exchange}")
+        
+        return contract
+
+    def request_es_data(self, req_id=2):
+        """Request ES futures price data"""
+        contract = self.get_es_contract()
+        print("\nRequesting ES futures tick-by-tick data...")
+        print(f"Contract: {contract.symbol} {contract.lastTradeDateOrContractMonth}")
+        # Request tick-by-tick data for last price
+        self.reqTickByTickData(req_id, contract, "Last", 0, True)
+
+    def tickByTickAllLast(self, reqId: int, tickType: int, time: int, price: float,
+                         size: int, tickAttribLast, exchange: str, specialConditions: str):
+        """Called when tick-by-tick data is received"""
+        # print(f"\nTick-by-tick data received - reqId: {reqId}, price: {price}, size: {size}")
+        
+        # For ES futures
+        if reqId == 2:
+            # print(f"Updating ES price from {self.es_price} to {price}")
+            self.es_price = price
+            # Put the price update in the queue for processing
+            msg = ('price', reqId, 4, price)
+            # print(f"Putting message in queue: {msg}")  # Debug print
+            self.data_queue.put(msg)
+            # print("Message put in queue successfully")  # Debug print
+            # print(f"Updated ES price: {price}")
+            # print(f"Current prices - SPX: {self.spx_price}, ES: {self.es_price}")
+
     def is_market_hours(self):
         """Check if we're in SPX market hours (9:30 AM - 4:15 PM ET, Mon-Fri)"""
         now = datetime.now(self.et_timezone)
@@ -278,20 +380,8 @@ class TWSConnector(IBWrapper, TWS):
             # During market hours - request real-time data
             self.reqMktData(req_id, contract, "", False, False, [])
         else:
-            # Outside market hours - get last closing price
-            end_time = ""  # Empty string means "now"
-            self.reqHistoricalData(
-                reqId=req_id,
-                contract=contract,
-                endDateTime=end_time,
-                durationStr="1 D",
-                barSizeSetting="1 day",
-                whatToShow="TRADES",
-                useRTH=1,
-                formatDate=1,
-                keepUpToDate=False,
-                chartOptions=[]
-            )
+            # Outside market hours - get delayed data instead of historical
+            self.reqMktData(req_id, contract, "", False, False, [])
     
     def request_option_data(self, contract: Contract):
         """Request market data for an option position"""
@@ -505,7 +595,7 @@ class TWSConnector(IBWrapper, TWS):
         self.data_queue.put(('contract_details_end', reqId))
 
     def get_option_price(self, contract: Contract) -> float:
-        """Get the mid price (bid+ask)/2 for an option"""
+        """Get the mid price (bid+ask)/2 for an option, rounded to nearest 0.05"""
         req_id = self.get_next_req_id()
         self.reqMktData(req_id, contract, "100,101", False, False, [])  # Request bid/ask
         
@@ -533,9 +623,13 @@ class TWSConnector(IBWrapper, TWS):
         self.cancelMktData(req_id)
         
         if bid is not None and ask is not None:
-            return (bid + ask) / 2
+            # Calculate mid-price and round to nearest 0.05
+            mid_price = round(((bid + ask) / 2) * 20) / 20
+            print(f"Option price - Bid: {bid:.2f}, Ask: {ask:.2f}, Mid: {mid_price:.2f}")
+            return mid_price
         else:
-            return 0.0  # Return 0 if we couldn't get both bid and ask 
+            print("Failed to get bid/ask data")
+            return 0.0  # Return 0 if we couldn't get both bid and ask
 
     def create_iron_condor_order(self, 
                                put_wing_contract: Contract,

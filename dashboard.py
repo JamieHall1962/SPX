@@ -9,24 +9,35 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QTimer
 from find_delta import (
-    is_market_hours, 
+    is_market_hours,
+    execute_dc_config_6,
     ConnectionManager,
-    execute_double_calendar,
-    execute_dc_config_2,
-    execute_dc_config_3,
-    execute_dc_config_4,
-    execute_dc_config_5,
-    execute_dc_config_6
+    execute_double_calendar
 )
+from tws_connector import TWSConnector
 from trade_database import TradeDatabase
 from trade_scheduler import TradeScheduler
 from trade_config import (
+    TradeConfig,
     DC_CONFIG, DC_CONFIG_2, DC_CONFIG_3,
     DC_CONFIG_4, DC_CONFIG_5, DC_CONFIG_6,
     CUSTOM_STRANGLE_CONFIG
 )
+from ibapi.client import EClient
+from ibapi.wrapper import EWrapper
 from ibapi.contract import Contract
 from ibapi.order import Order
+import random
+
+class SimpleManager:
+    """A simple manager that wraps TWSConnector for trade execution"""
+    def __init__(self, tws):
+        self.tws = tws
+        # Temporarily disable database
+        # self.db = TradeDatabase()  # Add database instance
+    
+    def get_tws(self):
+        return self.tws
 
 class TradingDashboard(QMainWindow):
     def __init__(self):
@@ -35,11 +46,22 @@ class TradingDashboard(QMainWindow):
         self.resize(800, 600)
         
         # Initialize components
-        self.connection_manager = None
+        self.connection_manager = None  # Will hold ConnectionManager instance
         self.running = False
         self.last_price_update = 0
         self.price_update_interval = 1  # seconds
-        self.start_time = time.time()  # Added start time tracking
+        self.start_time = time.time()
+        
+        # Create delta functions
+        def get_put_delta():
+            return 0.25
+            
+        def get_call_delta():
+            return 0.25
+            
+        # Store the functions as instance variables
+        self.get_put_delta = get_put_delta
+        self.get_call_delta = get_call_delta
         
         # Create UI
         self.setup_ui()
@@ -60,13 +82,12 @@ class TradingDashboard(QMainWindow):
             if not self.running or not self.connection_manager:
                 return
                 
-            is_connected = self.connection_manager.tws.isConnected()
+            is_connected = self.connection_manager.check_connection()
             
             if is_connected:
                 self.connection_status.setText("✅ CONNECTED")
-                # Start price updates if not already started
                 if not self.price_timer.isActive():
-                    self.price_timer.start(1000)  # Update prices every second
+                    self.price_timer.start(1000)
             else:
                 self.connection_status.setText("❌ DISCONNECTED")
                 self.price_timer.stop()
@@ -80,29 +101,20 @@ class TradingDashboard(QMainWindow):
             if not self.running or not self.connection_manager or not self.connection_manager.tws:
                 return
                 
-            # Only update if enough time has passed
             current_time = time.time()
             if current_time - self.last_price_update < self.price_update_interval:
                 return
                 
-            # Update SPX price if available
-            if hasattr(self.connection_manager.tws, 'spx_price') and self.connection_manager.tws.spx_price is not None:
+            if hasattr(self.connection_manager.tws, 'spx_price'):
                 try:
                     self.spx_price.setText(f"{float(self.connection_manager.tws.spx_price):.2f}")
                 except (ValueError, TypeError) as e:
-                    print(f"Error formatting SPX price: {e}")
-            
-            # Update ES price if available
-            if hasattr(self.connection_manager.tws, 'es_price') and self.connection_manager.tws.es_price is not None:
-                try:
-                    self.es_price.setText(f"{float(self.connection_manager.tws.es_price):.2f}")
-                except (ValueError, TypeError) as e:
-                    print(f"Error formatting ES price: {e}")
+                    pass
             
             self.last_price_update = current_time
             
         except Exception as e:
-            print(f"Error updating prices: {str(e)}")
+            pass
     
     def get_es_contract(self):
         """Get the active ES futures contract"""
@@ -132,12 +144,13 @@ class TradingDashboard(QMainWindow):
             
         es_contract.lastTradeDateOrContractMonth = f"{year}{expiry_month}"
         
-        print("\nES Contract Details:")
-        print(f"Symbol: {es_contract.symbol}")
-        print(f"SecType: {es_contract.secType}")
-        print(f"Exchange: {es_contract.exchange}")
-        print(f"Currency: {es_contract.currency}")
-        print(f"LastTradeDate: {es_contract.lastTradeDateOrContractMonth}")
+        # Comment out debug prints
+        # print("\nES Contract Details:")
+        # print(f"Symbol: {es_contract.symbol}")
+        # print(f"SecType: {es_contract.secType}")
+        # print(f"Exchange: {es_contract.exchange}")
+        # print(f"Currency: {es_contract.currency}")
+        # print(f"LastTradeDate: {es_contract.lastTradeDateOrContractMonth}")
         
         return es_contract
     
@@ -148,54 +161,103 @@ class TradingDashboard(QMainWindow):
                 self.running = True
                 self.last_price_update = 0
                 
-                # Initialize connection manager
+                # Initialize connection manager for UI updates
                 print("Initializing connection manager...")
-                self.connection_manager = ConnectionManager(client_id=99, check_interval=180)
+                self.connection_manager = ConnectionManager(client_id=0, check_interval=0)
                 
-                # Request market data for SPX and ES
-                print("Requesting market data...")
-                if hasattr(self.connection_manager, 'tws'):
-                    # Cancel any existing market data requests
-                    try:
-                        self.connection_manager.tws.cancelMktData(1)  # Cancel SPX data
-                        self.connection_manager.tws.cancelMktData(2)  # Cancel ES data
-                        time.sleep(1)  # Give time for cancellations to process
-                    except Exception as e:
-                        print(f"Error canceling market data: {str(e)}")
-                    
-                    # Request SPX data
-                    spx_contract = self.connection_manager.tws.get_spx_contract()
-                    self.connection_manager.tws.reqMktData(1, spx_contract, "", False, False, [])
-                    
-                    # Request ES data
-                    es_contract = self.get_es_contract()
-                    print("Requesting ES futures market data...")
-                    self.connection_manager.tws.reqMktData(2, es_contract, "", False, False, [])
+                print("Waiting for connection to stabilize...")
+                time.sleep(5)
+                
+                if not self.connection_manager.tws or not self.connection_manager.tws.isConnected():
+                    raise Exception("Failed to establish stable connection")
                 
                 # Initialize scheduler
-                print("Initializing trade scheduler...")
                 self.scheduler = TradeScheduler()
                 
-                # Schedule custom strangle for 11:35 ET
-                print("Scheduling custom strangle for 11:35 ET")
+                # Schedule the IC trade for today at 14:05 ET
                 self.scheduler.add_trade(
-                    trade_name=CUSTOM_STRANGLE_CONFIG.trade_name,
-                    time_et="11:35",
+                    time_et="14:05",
+                    trade_name="IC_0DTE_160130_30",  # Format: IC_DTE_PutPremCallPrem_Width
                     trade_func=lambda: execute_double_calendar(self.connection_manager, config=CUSTOM_STRANGLE_CONFIG),
-                    day=datetime.now(pytz.timezone('US/Eastern')).strftime('%A')
+                    day="Wednesday"  # Specify today
                 )
                 
-                # Start timers
-                self.connection_timer.start(1000)  # Check every second
-                self.status_timer = QTimer()  # New timer for market hours
+                # Schedule other trades
+                self.scheduler.add_trade(
+                    trade_name=DC_CONFIG.trade_name,
+                    time_et="10:15",
+                    trade_func=lambda: execute_double_calendar(self.connection_manager, config=DC_CONFIG),
+                    day="Friday"
+                )
+                
+                self.scheduler.add_trade(
+                    trade_name=DC_CONFIG_2.trade_name,
+                    time_et="11:55",
+                    trade_func=lambda: execute_dc_config_2(self.connection_manager),
+                    day="Friday"
+                )
+                
+                self.scheduler.add_trade(
+                    trade_name=DC_CONFIG_3.trade_name,
+                    time_et="13:00",
+                    trade_func=lambda: execute_dc_config_3(self.connection_manager),
+                    day="Friday"
+                )
+                
+                self.scheduler.add_trade(
+                    trade_name=DC_CONFIG_4.trade_name,
+                    time_et="14:10",
+                    trade_func=lambda: execute_dc_config_4(self.connection_manager),
+                    day="Friday"
+                )
+                
+                self.scheduler.add_trade(
+                    trade_name=DC_CONFIG_5.trade_name,
+                    time_et="12:00",
+                    trade_func=lambda: execute_dc_config_5(self.connection_manager),
+                    day="Monday"
+                )
+                
+                self.scheduler.add_trade(
+                    trade_name=DC_CONFIG_6.trade_name,
+                    time_et="13:30",
+                    trade_func=lambda: execute_dc_config_6(self.connection_manager),
+                    day="Monday"
+                )
+                
+                # List all scheduled trades
+                self.scheduler.list_trades()
+                
+                print("System ready - monitoring for scheduled trades")
+                
+                # Start timers only after connection is stable
+                self.connection_timer.start(1000)
+                self.status_timer = QTimer()
                 self.status_timer.timeout.connect(self.update_status)
-                self.status_timer.start(1000)  # Update every second
+                self.status_timer.start(1000)
                 
                 # Update UI
                 self.start_button.setEnabled(False)
                 self.stop_button.setEnabled(True)
+                
+                # Setup market data based on market hours
+                print("Setting up market data...")
+                try:
+                    now = datetime.now(pytz.timezone('US/Eastern'))
+                    is_rth = (now.hour >= 9 and now.minute >= 30) and now.hour < 16
+                    
+                    if is_rth:
+                        print("In RTH - requesting real-time SPX data...")
+                        self.connection_manager.tws.request_spx_data()
+                    else:
+                        print("Outside RTH - requesting historical SPX data...")
+                        self.connection_manager.tws.request_spx_historical_data()
+                    time.sleep(3)
+                    
+                except Exception as e:
+                    print(f"Error setting up market data: {str(e)}")
+                
                 print("Trading system startup complete")
-                self.scheduler.list_trades()  # Show scheduled trades
                 
             except Exception as e:
                 print(f"Error in start_trading: {str(e)}")
@@ -218,10 +280,17 @@ class TradingDashboard(QMainWindow):
                 uptime_minutes = (uptime_seconds % 3600) // 60
                 self.uptime.setText(f"{uptime_hours}h {uptime_minutes}m")
             
-            # Run scheduler if market is open
-            if market_open and hasattr(self, 'scheduler'):
+            # Run scheduler
+            if hasattr(self, 'scheduler'):
                 self.scheduler.run()
-            
+                
+                # Update next trade display
+                next_trade = self.scheduler.get_next_trade()
+                if next_trade:
+                    self.next_trade.setText(f"{next_trade['day']} {next_trade['time_et']} ET - {next_trade['name']}")
+                else:
+                    self.next_trade.setText("None")
+        
         except Exception as e:
             print(f"Error updating status: {str(e)}")
     
@@ -236,13 +305,10 @@ class TradingDashboard(QMainWindow):
             if hasattr(self, 'status_timer'):
                 self.status_timer.stop()
             
-            # Cancel market data subscriptions
-            if self.connection_manager and self.connection_manager.tws:
+            # Disconnect using connection manager
+            if self.connection_manager:
                 try:
-                    self.connection_manager.tws.cancelMktData(1)  # Cancel SPX data
-                    self.connection_manager.tws.cancelMktData(2)  # Cancel ES data
-                    self.connection_manager.tws.cancelMktData(3)  # Cancel contract details request
-                    self.connection_manager.tws.disconnect()
+                    self.connection_manager.disconnect()
                 except Exception as e:
                     print(f"Error disconnecting TWS: {str(e)}")
             

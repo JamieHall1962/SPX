@@ -93,7 +93,9 @@ class TradeDatabase:
             """, (
                 now, config.trade_name, config.trade_type, spx_price,
                 config.short_dte, config.put_long_dte, config.call_long_dte,
-                config.put_delta, config.call_delta, config.put_width, config.call_width,
+                (config.put_delta() if callable(config.put_delta) else config.put_delta),
+                (config.call_delta() if callable(config.call_delta) else config.call_delta),
+                config.put_width, config.call_width,
                 config.quantity, status, reason_if_failed,
                 initial_debit, final_debit, fill_time, order_id
             ))
@@ -197,4 +199,79 @@ class TradeDatabase:
                 "trade": trade,
                 "legs": legs,
                 "adjustments": adjustments
-            } 
+            }
+    
+    def get_recent_trades(self, limit: int = 5) -> list:
+        """Get the most recent trades with full details"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            
+            # Get the most recent trade attempts
+            cursor.execute("""
+                SELECT * FROM trade_attempts
+                ORDER BY timestamp DESC
+                LIMIT ?
+            """, (limit,))
+            trades = cursor.fetchall()
+            
+            # For each trade, get its legs and adjustments
+            detailed_trades = []
+            for trade in trades:
+                trade_id = trade[0]  # Assuming id is first column
+                
+                # Get legs
+                cursor.execute("""
+                    SELECT * FROM option_legs
+                    WHERE trade_attempt_id = ?
+                    ORDER BY leg_type
+                """, (trade_id,))
+                legs = cursor.fetchall()
+                
+                # Get price adjustments
+                cursor.execute("""
+                    SELECT * FROM price_adjustments
+                    WHERE trade_attempt_id = ?
+                    ORDER BY adjustment_time
+                """, (trade_id,))
+                adjustments = cursor.fetchall()
+                
+                detailed_trades.append({
+                    "trade": trade,
+                    "legs": legs,
+                    "adjustments": adjustments
+                })
+                
+            return detailed_trades
+    
+    def print_trade_summary(self, trade_details: dict):
+        """Print a human-readable summary of a trade"""
+        trade = trade_details["trade"]
+        print("\n" + "="*50)
+        print(f"Trade: {trade[2]}")  # trade_name
+        print(f"Time: {trade[1]}")   # timestamp
+        print(f"Status: {trade[13]}")  # status
+        if trade[14]:  # reason_if_failed
+            print(f"Reason: {trade[14]}")
+        print(f"SPX Price: {trade[4]}")  # spx_price
+        if trade[15]:  # initial_debit
+            print(f"Initial Debit: {trade[15]:.2f}")
+        if trade[16]:  # final_debit
+            print(f"Final Debit: {trade[16]:.2f}")
+        if trade[17]:  # fill_time
+            print(f"Fill Time: {trade[17]}")
+        
+        # Print legs if available
+        if trade_details["legs"]:
+            print("\nOption Legs:")
+            for leg in trade_details["legs"]:
+                iv = float(leg[7]) * 100 if leg[7] is not None else None  # implied_vol (convert to percentage)
+                leg_str = f"  {leg[2]}: {leg[3]} @ {leg[4]}"  # leg_type, symbol, strike
+                if iv is not None:
+                    leg_str += f" (IV: {iv:.1f}%)"
+                print(leg_str)
+        
+        # Print adjustments if available
+        if trade_details["adjustments"]:
+            print("\nPrice Adjustments:")
+            for adj in trade_details["adjustments"]:
+                print(f"  {adj[2]}: {adj[3]:.2f} -> {adj[4]:.2f}")  # time, old_debit, new_debit 
