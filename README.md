@@ -1,6 +1,6 @@
 # SPX Options Trading System
 
-An automated options trading system built with Python and Interactive Brokers TWS API.
+An automated options trading system built with Python and Interactive Brokers TWS API. A work in progress. I'd say about 50% done. Still needs more functionality, testing and error handling capabilities.
 
 ![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)
 ![PyQt Version](https://img.shields.io/badge/PyQt-6.0%2B-green)
