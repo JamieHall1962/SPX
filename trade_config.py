@@ -4,7 +4,7 @@ from typing import Literal, Callable
 @dataclass
 class TradeConfig:
     # Required parameters
-    trade_type: Literal["IC", "DC"]
+    trade_type: Literal["IC", "DC", "PF"]
     put_delta: Callable[[], float]  # Function that returns target delta or premium
     call_delta: Callable[[], float]  # Function that returns target delta or premium
     
@@ -21,6 +21,7 @@ class TradeConfig:
     fourth_wait: int = 60    # 1 minute
     final_wait: int = 60     # 1 minute
     price_increment_pct: float = 0.01  # 1% increment
+    min_credit: float = 0.0  # Minimum credit required
     
     def __post_init__(self):
         # Convert put_delta and call_delta to numeric values if they are callable
@@ -37,11 +38,14 @@ class TradeConfig:
             put_delta_str = f"{abs(self.put_delta * 100):02.0f}"
             call_delta_str = f"{abs(self.call_delta * 100):02.0f}"
             return f"IC_{self.short_dte}D_{put_delta_str}{call_delta_str}_{self.put_width}"
-        else:  # DC
+        elif self.trade_type == "DC":
             # Format: DC_3D_67D_3035_0
             put_delta_str = f"{abs(self.put_delta * 100):02.0f}"
             call_delta_str = f"{abs(self.call_delta * 100):02.0f}"
             return f"DC_{self.short_dte}D_{self.put_long_dte}{self.call_long_dte}D_{put_delta_str}{call_delta_str}_{self.put_width}"
+        else:  # PF
+            # Format: PF_0D_1050_50_1.30
+            return f"PF_{self.short_dte}D_{self.put_width}{self.call_width}_{self.min_credit:.2f}"
 
 # Example configurations
 IC_CONFIG = TradeConfig(
@@ -148,4 +152,22 @@ CUSTOM_STRANGLE_CONFIG = TradeConfig(
     second_wait=60,
     third_wait=60,
     price_increment_pct=0.05
+)
+
+# Add Put Butterfly Config
+PUT_FLY_CONFIG = TradeConfig(
+    trade_type="PF",  # Put Fly
+    put_delta=0.25,   # First long put delta
+    call_delta=0.0,   # Not used for Put Fly
+    quantity=1,
+    short_dte=1,      # 1DTE (will be 3DTE on Fridays due to weekend)
+    put_width=10,     # Distance to short puts
+    call_width=50,    # Total wing width (distance to far put)
+    initial_wait=60,
+    second_wait=60,
+    third_wait=60,
+    fourth_wait=60,
+    final_wait=60,
+    price_increment_pct=0.01,  # 1% increment
+    min_credit=1.30   # Minimum credit required
 ) 

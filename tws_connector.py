@@ -458,6 +458,12 @@ class TWSConnector(IBWrapper, TWS):
     def request_option_chain(self, expiry: str, right: str, min_strike: float, max_strike: float, target_delta: float = 0.15) -> List[OptionPosition]:
         """Request option chain data for SPX options within a strike range"""
         print("\nDEBUG: Entering request_option_chain")
+        print(f"DEBUG: Parameters received:")
+        print(f"  Expiry: {expiry}")
+        print(f"  Right: {right}")
+        print(f"  Min Strike: {min_strike}")
+        print(f"  Max Strike: {max_strike}")
+        print(f"  Target Delta: {target_delta}")
         
         # Create base contract - keep it simple
         contract = Contract()
@@ -467,20 +473,35 @@ class TWSConnector(IBWrapper, TWS):
         contract.strike = min_strike
         contract.right = right
         contract.lastTradeDateOrContractMonth = expiry
+        contract.tradingClass = "SPXW"  # Add this for SPX Weeklys
+        contract.multiplier = "100"
         
-        print("\nDEBUG: Contract created:")
-        print(f"Symbol: {contract.symbol}")
-        print(f"Strike: {contract.strike}")
-        print(f"Expiry: {contract.lastTradeDateOrContractMonth}")
-        print(f"Right: {contract.right}")
-        print(f"Exchange: {contract.exchange}")
+        # Format local symbol exactly as TWS expects
+        # Example for Jan 27 2025 6100 Put: "spxw 250127P06100000"
+        yy = expiry[2:4]
+        mm = expiry[4:6]
+        dd = expiry[6:8]
+        strike_int = int(min_strike)
+        strike_padded = f"{strike_int:05d}000"  # 5 digits + "000"
+        contract.localSymbol = f"spxw {yy}{mm}{dd}{right}{strike_padded}"  # Single space after 'spxw'
+        
+        print("\nDEBUG: Contract details being requested:")
+        print(f"  Symbol: {contract.symbol}")
+        print(f"  Trading Class: {contract.tradingClass}")
+        print(f"  Strike: {contract.strike}")
+        print(f"  Expiry: {contract.lastTradeDateOrContractMonth}")
+        print(f"  Right: {contract.right}")
+        print(f"  Exchange: {contract.exchange}")
+        print(f"  Local Symbol: {contract.localSymbol}")
+        print(f"  Multiplier: {contract.multiplier}")
+        print(f"  SecType: {contract.secType}")
         
         # Request contract details
         req_id = self.get_next_req_id()
         print(f"\nDEBUG: Requesting contract details with reqId: {req_id}")
         self.reqContractDetails(req_id, contract)
         
-        # Wait for contract details
+        # Wait for contract details with more debug info
         contract_found = False
         qualified_contract = None
         start_time = time.time()
@@ -488,21 +509,26 @@ class TWSConnector(IBWrapper, TWS):
         while time.time() - start_time < 5:
             try:
                 msg = self.data_queue.get(timeout=0.1)
-                print(f"\nDEBUG: Received message: {msg[0]}")
+                print(f"\nDEBUG: Received message type: {msg[0]}")
                 
                 if msg[0] == 'contract_details':
                     print("DEBUG: Got contract details")
                     contract_found = True
                     qualified_contract = msg[2].contract
+                    print(f"DEBUG: Qualified contract details:")
+                    print(f"  Symbol: {qualified_contract.symbol}")
+                    print(f"  Strike: {qualified_contract.strike}")
+                    print(f"  Local Symbol: {qualified_contract.localSymbol}")
                     break
                 elif msg[0] == 'error':
-                    print(f"DEBUG: Error received: {msg}")
+                    print(f"DEBUG: Error received: {msg[1]}, {msg[2]}, {msg[3]}")
                     
             except queue.Empty:
+                print("DEBUG: No message received in timeout period")
                 continue
         
         if not contract_found:
-            print("DEBUG: No contract details found")
+            print("DEBUG: No contract details found after waiting")
             return []
             
         # Request market data

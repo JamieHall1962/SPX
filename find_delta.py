@@ -44,8 +44,13 @@ def get_expiry_from_dte(dte: int) -> str:
     return expiry_date.strftime('%Y%m%d')
 
 def find_target_delta_option(tws: TWSConnector, expiry: str, right: str, initial_strike: float, target_delta: float = 0.15) -> Optional[OptionPosition]:
-    """Find an option with a target delta or premium using binary search"""
+    """Find an option with a target delta using binary search"""
     print(f"\nLooking for {right} option with target delta/premium: {target_delta}")
+    print(f"Initial parameters:")
+    print(f"Expiry: {expiry}")
+    print(f"Right: {right}")
+    print(f"Initial Strike: {initial_strike}")
+    print(f"Target Delta: {target_delta}")
     
     # Determine if we're searching by delta or premium
     searching_by_premium = target_delta > 1.0
@@ -80,6 +85,8 @@ def find_target_delta_option(tws: TWSConnector, expiry: str, right: str, initial
         strike_increment = 5  # Standard increment for delta-based search
     
     # Get initial option chain
+    print(f"\nRequesting option chain for:")
+    print(f"SPX {right} {initial_strike} {expiry}")
     options = tws.request_option_chain(expiry, right, initial_strike, initial_strike)
     if not options:
         print("No options found")
@@ -121,99 +128,68 @@ def find_target_delta_option(tws: TWSConnector, expiry: str, right: str, initial
     best_option = options[0]
     best_diff = abs(current_value - target_delta)
     
-    # For premium-based search, we'll track options above and below target
+    # Determine search direction
     if searching_by_premium:
-        # Search both up and down from initial strike
-        current_strike = initial_strike
-        all_options = []  # Store all options we find
-        max_strikes = 20  # Maximum number of strikes to check in each direction
+        # For premium: higher strike = lower premium
+        search_up = current_value > target_delta
+    else:
+        # For delta: 
+        # For puts: if delta is too low, move UP to get higher delta
+        # For calls: if delta is too high, move UP to get lower delta
+        search_up = (right == "P" and current_value < target_delta) or (right == "C" and current_value > target_delta)
+    
+    print(f"\nSearch direction: {'UP' if search_up else 'DOWN'} from strike {best_option.contract.strike}")
+    print(f"Current {search_type}: {current_value:.3f}, Target: {target_delta:.3f}")
+    print(f"Moving strike {'up' if search_up else 'down'} in {strike_increment}-point increments")
+    
+    max_attempts = 20  # Prevent infinite loops
+    attempts = 0
+    
+    while attempts < max_attempts:
+        attempts += 1
         
-        # Search downward (higher premium for puts, lower for calls)
-        for i in range(max_strikes):
-            strike = current_strike - (i * strike_increment)
-            options = tws.request_option_chain(expiry, right, strike, strike)
-            if options:
-                # Get accurate pricing using bid/ask
-                req_id = tws.get_next_req_id()
-                tws.reqMktData(req_id, options[0].contract, "100,101", False, False, [])
-                
-                bid = ask = None
-                timeout = time.time() + 2
-                while time.time() < timeout and (bid is None or ask is None):
-                    try:
-                        msg = tws.data_queue.get(timeout=0.1)
-                        if msg[0] == 'price' and msg[1] == req_id:
-                            if msg[2] == 1:  # Bid
-                                bid = msg[3]
-                            elif msg[2] == 2:  # Ask
-                                ask = msg[3]
-                    except queue.Empty:
-                        continue
-                
-                tws.cancelMktData(req_id)
-                
-                if bid is not None and ask is not None:
-                    premium = round(((bid + ask) / 2) * 20) / 20  # Round to nearest 0.05
-                    print(f"Strike {strike}: premium = {premium:.2f} (bid: {bid:.2f}, ask: {ask:.2f})")
-                    all_options.append((options[0], premium))
-                    if premium > target_delta * 1.5:  # Stop if premium gets too high
-                        break
+        # Calculate next strike
+        next_strike = best_option.contract.strike + (strike_increment if search_up else -strike_increment)
+        print(f"\nAttempt {attempts}/{max_attempts}:")
+        print(f"Checking strike: {next_strike}")
         
-        # Search upward (lower premium for puts, higher for calls)
-        for i in range(1, max_strikes):  # Start at 1 to skip initial strike
-            strike = current_strike + (i * strike_increment)
-            options = tws.request_option_chain(expiry, right, strike, strike)
-            if options:
-                # Get accurate pricing using bid/ask
-                req_id = tws.get_next_req_id()
-                tws.reqMktData(req_id, options[0].contract, "100,101", False, False, [])
-                
-                bid = ask = None
-                timeout = time.time() + 2
-                while time.time() < timeout and (bid is None or ask is None):
-                    try:
-                        msg = tws.data_queue.get(timeout=0.1)
-                        if msg[0] == 'price' and msg[1] == req_id:
-                            if msg[2] == 1:  # Bid
-                                bid = msg[3]
-                            elif msg[2] == 2:  # Ask
-                                ask = msg[3]
-                    except queue.Empty:
-                        continue
-                
-                tws.cancelMktData(req_id)
-                
-                if bid is not None and ask is not None:
-                    premium = round(((bid + ask) / 2) * 20) / 20  # Round to nearest 0.05
-                    print(f"Strike {strike}: premium = {premium:.2f} (bid: {bid:.2f}, ask: {ask:.2f})")
-                    all_options.append((options[0], premium))
-                    if premium < target_delta * 0.5:  # Stop if premium gets too low
-                        break
+        # Get option chain for next strike
+        options = tws.request_option_chain(expiry, right, next_strike, next_strike)
+        if not options:
+            print(f"No options found at strike {next_strike}")
+            break
+            
+        # Get new option's delta or premium
+        if searching_by_premium:
+            current_value = tws.get_option_price(options[0].contract)
+            print(f"Strike {next_strike}: premium = {current_value:.2f} (target: {target_delta:.2f})")
+        else:
+            current_value = options[0].delta if options[0].delta is not None else 0
+            print(f"Strike {next_strike}: delta = {current_value:.3f} (target: {target_delta:.3f})")
+            
+        # Check if this option is better
+        current_diff = abs(current_value - target_delta)
+        previous_diff = abs(best_option.delta - target_delta) if not searching_by_premium else abs(best_option.market_price - target_delta)
+        print(f"Current difference: {current_diff:.3f}, Previous best: {previous_diff:.3f}")
         
-        # Find option with premium closest to target
-        if all_options:
-            best_option, _ = min(all_options, key=lambda x: abs(x[1] - target_delta))
-            # Get final bid/ask for best option
-            req_id = tws.get_next_req_id()
-            tws.reqMktData(req_id, best_option.contract, "100,101", False, False, [])
+        if current_diff < previous_diff:
+            print(f"Found better option - updating best")
+            best_diff = current_diff
+            best_option = options[0]
             
-            bid = ask = None
-            timeout = time.time() + 2
-            while time.time() < timeout and (bid is None or ask is None):
-                try:
-                    msg = tws.data_queue.get(timeout=0.1)
-                    if msg[0] == 'price' and msg[1] == req_id:
-                        if msg[2] == 1:  # Bid
-                            bid = msg[3]
-                        elif msg[2] == 2:  # Ask
-                            ask = msg[3]
-                except queue.Empty:
-                    continue
+            # If we're very close to target, stop searching
+            if current_diff < 0.02:  # Within 0.02 of target
+                print(f"Within 0.02 of target - stopping search")
+                break
+        elif current_diff > previous_diff * 1.5:  # If getting significantly worse
+            print(f"Getting significantly worse - stopping search")
+            break
             
-            tws.cancelMktData(req_id)
-            
-            if bid is not None and ask is not None:
-                best_diff = abs(round(((bid + ask) / 2) * 20) / 20 - target_delta)
+        # Update search direction based on new value
+        if not searching_by_premium:
+            # For puts: if delta is still too low, keep moving UP
+            # For calls: if delta is still too high, keep moving UP
+            search_up = (right == "P" and current_value < target_delta) or (right == "C" and current_value > target_delta)
     
     if best_option:
         if searching_by_premium:
