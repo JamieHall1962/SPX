@@ -1,173 +1,578 @@
 from dataclasses import dataclass
-from typing import Literal, Callable
+from typing import List, Dict, Union, Optional
+from enum import Enum
+from datetime import time
+
+class TradeType(Enum):
+    """Available trade types in the system"""
+    DOUBLE_CALENDAR = "double_calendar"
+    PUT_FLY = "put_fly"
+    IRON_CONDOR = "iron_condor"
+    CUSTOM_STRANGLE = "custom_strangle"
+    HEDGE = "hedge"
+
+class MarketCondition(Enum):
+    """Market conditions required for entry"""
+    ANY = "any"
+    UP = "up"
+    DOWN = "down"
+    FLAT = "flat"
+
+class ExitTimeReference(Enum):
+    """Reference point for exit times"""
+    SHORT_EXPIRY = "short_expiry"  # Exit relative to short option expiration
+    ENTRY_DAY = "entry_day"        # Exit relative to entry day
+    SPECIFIC_DATE = "specific_date" # Exit on specific date
+    LONG_EXPIRY = "long_expiry"    # Exit relative to long option expiration
+
+@dataclass
+class ExitTime:
+    """
+    Specification for time-based exits
+    
+    Parameters:
+        time: Exit time in "HH:MM" format (ET)
+        reference: Which day to reference for exit
+        specific_date: Only used if reference is SPECIFIC_DATE
+    """
+    time: str
+    reference: ExitTimeReference = ExitTimeReference.SHORT_EXPIRY
+    specific_date: Optional[str] = None  # "YYYY-MM-DD" format if needed
+
+@dataclass
+class LegConfig:
+    """
+    Configuration for a single option leg
+    
+    Parameters:
+        leg_type: "PUT" or "CALL"
+        dte: Days to expiration for this leg
+        position: 1 for long, -1 for short
+        quantity: Relative quantity (will be multiplied by trade quantity)
+        delta_target: Target delta for short legs (None for long legs)
+        strike_offset: Strike distance from short leg (0 for same strike)
+    """
+    leg_type: str
+    dte: int
+    position: int
+    quantity: int
+    delta_target: Optional[float] = None
+    strike_offset: int = 0
 
 @dataclass
 class TradeConfig:
-    # Required parameters
-    trade_type: Literal["IC", "DC", "PF"]
-    put_delta: Callable[[], float]  # Function that returns target delta or premium
-    call_delta: Callable[[], float]  # Function that returns target delta or premium
+    """
+    Master configuration for a specific trade strategy
     
-    # Optional parameters with defaults
-    quantity: int = 1
-    short_dte: int = 1
-    put_long_dte: int = None  # For DC only
-    call_long_dte: int = None  # For DC only
-    put_width: int = 20  # For IC: wing width, For DC: strike offset
-    call_width: int = 20  # For IC: wing width, For DC: strike offset
-    initial_wait: int = 60   # 1 minute
-    second_wait: int = 60    # 1 minute
-    third_wait: int = 60     # 1 minute
-    fourth_wait: int = 60    # 1 minute
-    final_wait: int = 60     # 1 minute
-    price_increment_pct: float = 0.01  # 1% increment
-    min_credit: float = 0.0  # Minimum credit required
-    
-    def __post_init__(self):
-        # Convert put_delta and call_delta to numeric values if they are callable
-        if callable(self.put_delta):
-            self.put_delta = self.put_delta()
-        if callable(self.call_delta):
-            self.call_delta = self.call_delta()
+    Parameters:
+        trade_name: Unique identifier for this strategy
+        trade_type: Type of trade (e.g., DOUBLE_CALENDAR)
+        entry_time: Entry time in "HH:MM" format (ET)
+        entry_days: List of valid entry days
+        legs: List of option legs configurations
+        market_condition: Required market condition for entry
+        max_debit: Maximum debit allowed for entry
+        min_credit: Minimum credit required (for credit trades)
+        exit_conditions: Dictionary of exit triggers
+        time_based_exits: List of exit times
+        active: Whether this trade is currently active
+        description: Detailed description of the strategy
+    """
+    trade_name: str
+    trade_type: TradeType
+    entry_time: str
+    entry_days: List[str]
+    legs: List[LegConfig]
+    market_condition: MarketCondition
+    max_debit: Optional[float] = None
+    min_credit: Optional[float] = None
+    exit_conditions: Dict[str, Union[float, str]]
+    time_based_exits: List[ExitTime]
+    active: bool = True
+    description: str = ""
 
-    @property
-    def trade_name(self) -> str:
-        """Generate trade name based on parameters"""
-        if self.trade_type == "IC":
-            # Format: IC_1D_2006_20
-            put_delta_str = f"{abs(self.put_delta * 100):02.0f}"
-            call_delta_str = f"{abs(self.call_delta * 100):02.0f}"
-            return f"IC_{self.short_dte}D_{put_delta_str}{call_delta_str}_{self.put_width}"
-        elif self.trade_type == "DC":
-            # Format: DC_3D_67D_3035_0
-            put_delta_str = f"{abs(self.put_delta * 100):02.0f}"
-            call_delta_str = f"{abs(self.call_delta * 100):02.0f}"
-            return f"DC_{self.short_dte}D_{self.put_long_dte}{self.call_long_dte}D_{put_delta_str}{call_delta_str}_{self.put_width}"
-        else:  # PF
-            # Format: PF_0D_1050_50_1.30
-            return f"PF_{self.short_dte}D_{self.put_width}{self.call_width}_{self.min_credit:.2f}"
-
-# Example configurations
-IC_CONFIG = TradeConfig(
-    trade_type="IC",
-    put_delta=lambda: 0.20,
-    call_delta=lambda: 0.06,
-    quantity=3,
-    short_dte=1,
-    put_width=20,
-    call_width=20
-)
-
+# Double Calendar Configurations
 DC_CONFIG = TradeConfig(
-    trade_type="DC",
-    put_delta=lambda: 0.30,
-    call_delta=lambda: 0.35,
-    quantity=3,
-    short_dte=3,
-    put_long_dte=6,
-    call_long_dte=7,
-    put_width=0,  # offset
-    call_width=0  # offset
+    # Basic identification
+    trade_name="DC_Friday_1015",
+    trade_type=TradeType.DOUBLE_CALENDAR,
+    
+    # Entry parameters
+    entry_time="10:15",
+    entry_days=["Friday"],
+    market_condition=MarketCondition.ANY,
+    
+    # Leg definitions
+    legs=[
+        LegConfig(
+            leg_type="PUT",
+            dte=6,
+            position=1,
+            quantity=1,
+            strike_offset=0  # 0-point wing
+        ),
+        LegConfig(
+            leg_type="PUT",
+            dte=3,
+            position=-1,
+            quantity=1,
+            delta_target=0.30  # 30▲
+        ),
+        LegConfig(
+            leg_type="CALL",
+            dte=7,
+            position=1,
+            quantity=1,
+            strike_offset=0  # 0-point wing
+        ),
+        LegConfig(
+            leg_type="CALL",
+            dte=3,
+            position=-1,
+            quantity=1,
+            delta_target=0.35  # 35▲
+        )
+    ],
+    
+    # Risk parameters
+    max_debit=100.00,
+    min_credit=None,
+    
+    # Exit conditions
+    exit_conditions={
+        "abs_delta_threshold": 70
+    },
+    
+    # Time-based exits
+    time_based_exits=[
+        ExitTime(
+            time="13:05",
+            reference=ExitTimeReference.SHORT_EXPIRY  # Exits Monday at 13:05 ET
+        )
+    ],
+    
+    description="""
+    Double Calendar entered Friday 10:15 ET
+    - Short legs: 3 DTE (30▲ put, 35▲ call)
+    - Long legs: 6/7 DTE with 0-point wings
+    - Entry: Max debit $100.00
+    - Exits:
+      • ABS(Delta) > 70
+      • Monday at 13:05 ET
+    """
 )
 
 DC_CONFIG_2 = TradeConfig(
-    trade_type="DC",
-    put_delta=lambda: 0.50,
-    call_delta=lambda: 0.50,
-    quantity=5,
-    short_dte=5,
-    put_long_dte=7,
-    call_long_dte=7,
-    put_width=0,  # offset
-    call_width=0  # offset
+    # Basic identification
+    trade_name="DC_Friday_1155",
+    trade_type=TradeType.DOUBLE_CALENDAR,
+    
+    # Entry parameters
+    entry_time="11:55",
+    entry_days=["Friday"],
+    market_condition=MarketCondition.ANY,
+    
+    # Leg definitions
+    legs=[
+        LegConfig(
+            leg_type="PUT",
+            dte=7,
+            position=1,
+            quantity=1,
+            strike_offset=0  # 0-point wing
+        ),
+        LegConfig(
+            leg_type="PUT",
+            dte=5,
+            position=-1,
+            quantity=1,
+            delta_target=0.50  # 50▲
+        ),
+        LegConfig(
+            leg_type="CALL",
+            dte=7,
+            position=1,
+            quantity=1,
+            strike_offset=0  # 0-point wing
+        ),
+        LegConfig(
+            leg_type="CALL",
+            dte=5,
+            position=-1,
+            quantity=1,
+            delta_target=0.50  # 50▲
+        )
+    ],
+    
+    # Risk parameters
+    max_debit=100.00,
+    min_credit=None,
+    
+    # Exit conditions
+    exit_conditions={
+        "abs_delta_threshold": 17.5
+    },
+    
+    # Time-based exits
+    time_based_exits=[
+        ExitTime(
+            time="13:55",
+            reference=ExitTimeReference.SHORT_EXPIRY  # Exits Wednesday at 13:55 ET
+        )
+    ],
+    
+    description="""
+    Double Calendar entered Friday 11:55 ET
+    - Short legs: 5 DTE (50▲ put, 50▲ call)
+    - Long legs: 7 DTE with 0-point wings
+    - Entry: Max debit $100.00
+    - Exits:
+      • ABS(Delta) > 17.5
+      • Wednesday at 13:55 ET
+    """
 )
 
 DC_CONFIG_3 = TradeConfig(
-    trade_type="DC",
-    put_delta=lambda: 0.30,
-    call_delta=lambda: 0.15,
-    quantity=3,
-    short_dte=3,
-    put_long_dte=5,
-    call_long_dte=5,
-    put_width=25,  # offset
-    call_width=25  # offset
+    # Basic identification
+    trade_name="DC_Friday_1300",
+    trade_type=TradeType.DOUBLE_CALENDAR,
+    
+    # Entry parameters
+    entry_time="13:00",
+    entry_days=["Friday"],
+    market_condition=MarketCondition.ANY,
+    
+    # Leg definitions
+    legs=[
+        LegConfig(
+            leg_type="PUT",
+            dte=5,
+            position=1,
+            quantity=1,
+            strike_offset=25  # 25-point wing
+        ),
+        LegConfig(
+            leg_type="PUT",
+            dte=3,
+            position=-1,
+            quantity=1,
+            delta_target=0.30  # 30▲
+        ),
+        LegConfig(
+            leg_type="CALL",
+            dte=5,
+            position=1,
+            quantity=1,
+            strike_offset=25  # 25-point wing
+        ),
+        LegConfig(
+            leg_type="CALL",
+            dte=3,
+            position=-1,
+            quantity=1,
+            delta_target=0.15  # 15▲
+        )
+    ],
+    
+    # Risk parameters
+    max_debit=100.00,
+    min_credit=None,
+    
+    # Exit conditions
+    exit_conditions={},  # No delta threshold exit
+    
+    # Time-based exits
+    time_based_exits=[
+        ExitTime(
+            time="14:00",
+            reference=ExitTimeReference.SHORT_EXPIRY  # Exits Monday at 14:00 ET
+        )
+    ],
+    
+    description="""
+    Double Calendar entered Friday 13:00 ET
+    - Short legs: 3 DTE (30▲ put, 15▲ call)
+    - Long legs: 5 DTE with 25-point wings
+    - Entry: Max debit $100.00
+    - Exits:
+      • Monday at 14:00 ET
+    """
 )
 
 DC_CONFIG_4 = TradeConfig(
-    trade_type="DC",
-    put_delta=lambda: 0.30,
-    call_delta=lambda: 0.20,
-    quantity=3,
-    short_dte=3,
-    put_long_dte=7,
-    call_long_dte=7,
-    put_width=20,  # offset
-    call_width=20  # offset
+    # Basic identification
+    trade_name="DC_Friday_1410",
+    trade_type=TradeType.DOUBLE_CALENDAR,
+    
+    # Entry parameters
+    entry_time="14:10",
+    entry_days=["Friday"],
+    market_condition=MarketCondition.ANY,
+    
+    # Leg definitions
+    legs=[
+        LegConfig(
+            leg_type="PUT",
+            dte=7,
+            position=1,
+            quantity=1,
+            strike_offset=20  # 20-point wing
+        ),
+        LegConfig(
+            leg_type="PUT",
+            dte=3,
+            position=-1,
+            quantity=1,
+            delta_target=0.30  # 30▲
+        ),
+        LegConfig(
+            leg_type="CALL",
+            dte=7,
+            position=1,
+            quantity=1,
+            strike_offset=20  # 20-point wing
+        ),
+        LegConfig(
+            leg_type="CALL",
+            dte=3,
+            position=-1,
+            quantity=1,
+            delta_target=0.20  # 20▲
+        )
+    ],
+    
+    # Risk parameters
+    max_debit=100.00,
+    min_credit=None,
+    
+    # Exit conditions
+    exit_conditions={
+        "profit_target": 4.00
+    },
+    
+    # Time-based exits
+    time_based_exits=[
+        ExitTime(
+            time="14:45",
+            reference=ExitTimeReference.SHORT_EXPIRY  # Exits Monday at 14:45 ET
+        )
+    ],
+    
+    description="""
+    Double Calendar entered Friday 14:10 ET
+    - Short legs: 3 DTE (30▲ put, 20▲ call)
+    - Long legs: 7 DTE with 20-point wings
+    - Entry: Max debit $100.00
+    - Exits:
+      • Profit target $4.00
+      • Monday at 14:45 ET
+    """
 )
 
 DC_CONFIG_5 = TradeConfig(
-    trade_type="DC",
-    put_delta=lambda: 0.12,
-    call_delta=lambda: 0.17,
-    quantity=3,
-    short_dte=3,
-    put_long_dte=7,
-    call_long_dte=7,
-    put_width=0,  # offset
-    call_width=0  # offset
+    # Basic identification
+    trade_name="DC_Monday_1200",
+    trade_type=TradeType.DOUBLE_CALENDAR,
+    
+    # Entry parameters
+    entry_time="12:00",
+    entry_days=["Monday"],
+    market_condition=MarketCondition.ANY,
+    
+    # Leg definitions
+    legs=[
+        LegConfig(
+            leg_type="PUT",
+            dte=7,
+            position=1,
+            quantity=1,
+            strike_offset=0  # 0-point wing
+        ),
+        LegConfig(
+            leg_type="PUT",
+            dte=3,
+            position=-1,
+            quantity=1,
+            delta_target=0.12  # 12▲
+        ),
+        LegConfig(
+            leg_type="CALL",
+            dte=7,
+            position=1,
+            quantity=1,
+            strike_offset=0  # 0-point wing
+        ),
+        LegConfig(
+            leg_type="CALL",
+            dte=3,
+            position=-1,
+            quantity=1,
+            delta_target=0.17  # 17▲
+        )
+    ],
+    
+    # Risk parameters
+    max_debit=100.00,
+    min_credit=None,
+    
+    # Exit conditions
+    exit_conditions={
+        "profit_target_pct": 0.45,
+        "abs_delta_threshold": 11
+    },
+    
+    # Time-based exits
+    time_based_exits=[
+        ExitTime(
+            time="09:45",
+            reference=ExitTimeReference.SHORT_EXPIRY  # Exits Thursday at 09:45 ET
+        )
+    ],
+    
+    description="""
+    Double Calendar entered Monday 12:00 ET
+    - Short legs: 3 DTE (12▲ put, 17▲ call)
+    - Long legs: 7 DTE with 0-point wings
+    - Entry: Max debit $100.00
+    - Exits:
+      • 45% profit target
+      • ABS(Delta) > 11
+      • Thursday at 09:45 ET
+    """
 )
 
 DC_CONFIG_6 = TradeConfig(
-    trade_type="DC",
-    put_delta=lambda: 0.25,
-    call_delta=lambda: 0.25,
-    quantity=3,
-    short_dte=1,
-    put_long_dte=4,
-    call_long_dte=4,
-    put_width=0,  # offset
-    call_width=0  # offset
+    # Basic identification
+    trade_name="DC_Monday_1330",
+    trade_type=TradeType.DOUBLE_CALENDAR,
+    
+    # Entry parameters
+    entry_time="13:30",
+    entry_days=["Monday"],
+    market_condition=MarketCondition.ANY,
+    
+    # Leg definitions
+    legs=[
+        LegConfig(
+            leg_type="PUT",
+            dte=4,
+            position=1,
+            quantity=1,
+            strike_offset=0  # 0-point wing
+        ),
+        LegConfig(
+            leg_type="PUT",
+            dte=1,
+            position=-1,
+            quantity=1,
+            delta_target=0.25  # 25▲
+        ),
+        LegConfig(
+            leg_type="CALL",
+            dte=4,
+            position=1,
+            quantity=1,
+            strike_offset=0  # 0-point wing
+        ),
+        LegConfig(
+            leg_type="CALL",
+            dte=1,
+            position=-1,
+            quantity=1,
+            delta_target=0.25  # 25▲
+        )
+    ],
+    
+    # Risk parameters
+    max_debit=100.00,
+    min_credit=None,
+    
+    # Exit conditions
+    exit_conditions={
+        "abs_delta_threshold": 30
+    },
+    
+    # Time-based exits
+    time_based_exits=[
+        ExitTime(
+            time="14:45",
+            reference=ExitTimeReference.SHORT_EXPIRY  # Exits Tuesday at 14:45 ET
+        )
+    ],
+    
+    description="""
+    Double Calendar entered Monday 13:30 ET
+    - Short legs: 1 DTE (25▲ put, 25▲ call)
+    - Long legs: 4 DTE with 0-point wings
+    - Entry: Max debit $100.00
+    - Exits:
+      • ABS(Delta) > 30
+      • Tuesday at 14:45 ET
+    """
 )
 
-# Function to return premium values
-def get_put_premium():
-    return 1.60
-
-def get_call_premium():
-    return 1.30
-
-# Custom 0DTE Strangle Config
-CUSTOM_STRANGLE_CONFIG = TradeConfig(
-    trade_type="DC",
-    put_delta=get_put_premium,  # Use the actual function, not lambda
-    call_delta=get_call_premium,  # Use the actual function, not lambda
-    quantity=1,
-    short_dte=0,
-    put_long_dte=0,
-    call_long_dte=0,
-    put_width=30,
-    call_width=30,
-    initial_wait=60,
-    second_wait=60,
-    third_wait=60,
-    price_increment_pct=0.05
-)
-
-# Add Put Butterfly Config
-PUT_FLY_CONFIG = TradeConfig(
-    trade_type="PF",  # Put Fly
-    put_delta=0.25,   # First long put delta
-    call_delta=0.0,   # Not used for Put Fly
-    quantity=1,
-    short_dte=1,      # 1DTE (will be 3DTE on Fridays due to weekend)
-    put_width=10,     # Distance to short puts
-    call_width=50,    # Total wing width (distance to far put)
-    initial_wait=60,
-    second_wait=60,
-    third_wait=60,
-    fourth_wait=60,
-    final_wait=60,
-    price_increment_pct=0.01,  # 1% increment
-    min_credit=1.30   # Minimum credit required
+IC_CONFIG = TradeConfig(
+    # Basic identification
+    trade_name="IC_Thursday_1545",
+    trade_type=TradeType.IRON_CONDOR,
+    
+    # Entry parameters
+    entry_time="15:45",
+    entry_days=["Thursday"],
+    market_condition=MarketCondition.ANY,
+    
+    # Leg definitions
+    legs=[
+        LegConfig(
+            leg_type="PUT",
+            dte=1,
+            position=1,
+            quantity=1,
+            strike_offset=-20  # 20 points below short put
+        ),
+        LegConfig(
+            leg_type="PUT",
+            dte=1,
+            position=-1,
+            quantity=1,
+            delta_target=0.20  # 20▲
+        ),
+        LegConfig(
+            leg_type="CALL",
+            dte=1,
+            position=-1,
+            quantity=1,
+            delta_target=0.06  # 6▲
+        ),
+        LegConfig(
+            leg_type="CALL",
+            dte=1,
+            position=1,
+            quantity=1,
+            strike_offset=20  # 20 points above short call
+        )
+    ],
+    
+    # Risk parameters
+    max_debit=None,
+    min_credit=1.80,
+    
+    # Exit conditions
+    exit_conditions={
+        "leg_test_threshold": 2.0,  # Exit if SPX within 2 points of any short strike
+        "exit_tested_side": True    # Indicates to exit both legs on tested side
+    },
+    
+    # Time-based exits
+    time_based_exits=[],  # No timed exits - let untested sides expire at 16:00
+    
+    description="""
+    Iron Condor entered Thursday 15:45 ET
+    - Short legs: 1 DTE (20▲ put, 6▲ call)
+    - Long legs: 1 DTE with 20-point wings
+    - Entry: Min credit $1.80
+    - Exits:
+      • Exit tested side if SPX within 2 points of short strike
+      • Let untested sides expire at 16:00
+    """
 ) 
