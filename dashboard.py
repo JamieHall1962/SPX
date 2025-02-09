@@ -44,403 +44,235 @@ class SimpleManager:
         return self.tws
 
 def execute_put_fly(connection_manager: ConnectionManager):
-    """Execute a Put Butterfly trade if market conditions are met"""
+    """
+    Execute a 1DTE Put Butterfly trade as a credit spread.
+    
+    Trade structure:
+      • Leg1: Buy 1 put (long) with ~25 delta.
+      • Leg2: Sell 2 puts at a strike 10 points lower than Leg1.
+      • Leg3: Buy 1 put at a strike 50 points lower than Leg1.
+      
+    Minimum acceptable credit: 1.30.
+    (Note: Credits are expressed as negative numbers; e.g., -3.00 offers more credit than -1.30.)
+    
+    For testing we ignore market/timing conditions; in production,
+    execute only at Wed/Thu/Fri 15:45 if the market is up.
+    
+    IBKR requires combo orders for credit trades to be submitted as BUY orders at negative prices.
+    """
     tws = connection_manager.get_tws()
     if not tws:
         print("No TWS connection available")
         return
-        
+
     try:
-        # Get current SPX price with retries
+        # --------------------- Step 1: Get Current Market Price ---------------------
         max_retries = 3
         retry_count = 0
+        current_spx = None
         while retry_count < max_retries:
-            # Request SPX price based on market hours
+            print("Requesting SPX price...")
+            # For testing, bypass market-time logic:
             if is_market_hours():
-                print("Market is open - requesting real-time SPX price...")
                 tws.reqMktData(1, tws.get_spx_contract(), "", False, False, [])
             else:
-                print("Market is closed - requesting previous SPX close...")
                 tws.request_spx_historical_data()
-            
-            # Wait for price with timeout
             timeout = time.time() + 5
             while time.time() < timeout:
                 if tws.spx_price is not None:
+                    current_spx = tws.spx_price
                     break
                 time.sleep(0.1)
-            
-            if tws.spx_price is not None:
-                current_spx = tws.spx_price
-                print(f"\nGot SPX price: {current_spx:.2f}")
+            if current_spx is not None:
+                print(f"Got SPX price: {current_spx:.2f}")
                 break
-                
             retry_count += 1
-            if retry_count < max_retries:
-                print(f"Retry {retry_count}/{max_retries} getting SPX price...")
-                time.sleep(2)
-        
-        if tws.spx_price is None:
-            print("Failed to get SPX price after all retries")
+            print(f"Retry {retry_count}/{max_retries} getting SPX price...")
+            time.sleep(2)
+        if current_spx is None:
+            print("Failed to get SPX price")
             return
-            
-        print(f"\nExecuting Put Butterfly - Current SPX: {current_spx:.2f}")
-        
-        # Get expiry based on DTE from config (1DTE normally, 3DTE on Fridays)
+
+        # ------------------ Step 2: Determine Option Expiry ------------------
         et_now = datetime.now(pytz.timezone('US/Eastern'))
-        dte = PUT_FLY_CONFIG.short_dte
+        dte = 1
         if et_now.weekday() == 4:  # Friday
-            dte = 3  # Use 3DTE on Fridays due to weekend
+            dte = 3
         expiry = get_expiry_from_dte(dte)
-        print(f"\nLooking for {dte}DTE options (expiry: {expiry})")
+        print(f"Using expiry: {expiry} for {dte}DTE")
         
-        # First, find the put at 0.25 delta
-        # Start ~75 points below current price for initial 0.25 delta guess
-        initial_strike = round((current_spx - 75) / 5) * 5  # Round to nearest 5
-        print(f"\nSearching for 0.25 delta put starting at strike {initial_strike}")
-        print(f"({current_spx - initial_strike:.0f} points below current SPX)")
+        # ------------------ Step 3: Find the 25 Delta Put ------------------
+        target_delta = 0.25       # Desired absolute delta
+        acceptable_diff = 0.02    # Acceptable margin (±0.02)
+        initial_strike = round((current_spx - 300) / 5) * 5  
+        print(f"Searching for 25δ put starting at strike {initial_strike} " +
+              f"({current_spx - initial_strike:.0f} points OTM)")
         
-        # Create base contract for delta search
-        base_contract = Contract()
-        base_contract.symbol = "SPX"
-        base_contract.secType = "OPT"
-        base_contract.exchange = "SMART"
-        base_contract.currency = "USD"
-        base_contract.right = "P"
-        base_contract.strike = initial_strike
-        base_contract.lastTradeDateOrContractMonth = expiry
-        base_contract.multiplier = "100"
-        
-        # Don't set tradingClass or localSymbol - let TWS resolve these
-        # The contract identifier should be minimal to allow TWS to find the contract
-        
-        print("\nSearching for initial put with target delta 0.25...")
-        print(f"Contract details:")
-        print(f"Symbol: {base_contract.symbol}")
-        print(f"Strike: {base_contract.strike}")
-        print(f"Expiry: {base_contract.lastTradeDateOrContractMonth}")
-        print(f"Right: {base_contract.right}")
-        print(f"Exchange: {base_contract.exchange}")
-        
-        # First request contract details
-        contract_req_id = tws.get_next_req_id()
-        print(f"\nRequesting contract details (reqId: {contract_req_id})")
-        tws.reqContractDetails(contract_req_id, base_contract)
-        
-        # Wait for contract details
-        timeout = time.time() + 5
-        contract_found = False
-        while time.time() < timeout:
-            try:
-                msg = tws.data_queue.get(timeout=0.1)
-                if msg[0] == 'contract_details':
-                    _, msg_req_id, contract_details = msg
-                    if msg_req_id == contract_req_id:
-                        print("Got contract details")
-                        base_contract = contract_details.contract
-                        contract_found = True
-                        break
-            except queue.Empty:
-                continue
-                
-        if not contract_found:
-            print("Failed to get contract details")
-            return
-        
-        # Now request market data
-        req_id = tws.get_next_req_id()
-        print(f"\nRequesting market data for initial put (reqId: {req_id})")
-        # Request specific tick types:
-        # 100: Option Volume
-        # 101: Option Open Interest
-        # 106: Implied Volatility
-        # 236: Inventory
-        tws.reqMktData(req_id, base_contract, "100,101,106,236", False, False, [])
-        
-        # Wait for delta data
-        timeout = time.time() + 5
-        initial_put = None
-        current_strike = initial_strike
-        max_attempts = 10  # Prevent infinite loops
+        current_strike_found = initial_strike
+        max_attempts = 20
         attempts = 0
-        
+        found_put = None
+
         while attempts < max_attempts:
-            try:
-                msg = tws.data_queue.get(timeout=0.1)
-                if msg[0] == 'option_computation':
-                    _, msg_req_id, tick_type, impl_vol, delta, gamma, vega, theta, opt_price = msg
-                    if msg_req_id == req_id and delta != -2:
-                        print(f"Received delta: {delta:.3f} at strike {current_strike}")
-                        
-                        # Store this option
-                        initial_put = OptionPosition(
-                            contract=base_contract,
-                            position=0,
-                            avg_cost=0,
-                            delta=delta
-                        )
-                        
-                        # Calculate how far we are from target
-                        delta_diff = abs(abs(delta) - 0.25)
-                        
-                        # Always check the next strike if we're not exactly at 0.25
-                        if abs(delta) != 0.25:
-                            # Not close enough - adjust strike and try again
-                            current_delta = abs(delta)
-                            
-                            # Calculate strike adjustment based on how far we are from target
-                            delta_diff = 0.25 - current_delta
-                            
-                            # Rough estimate: every 5-10 points = ~0.01 delta change
-                            # So multiply delta difference by 500-1000 for strike adjustment
-                            if abs(delta_diff) > 0.1:  # Very far
-                                points_per_delta = 750  # More aggressive
-                            elif abs(delta_diff) > 0.05:  # Moderately far
-                                points_per_delta = 600
-                            else:  # Getting close
-                                points_per_delta = 500  # More conservative
-                                
-                            # Calculate strike change
-                            strike_change = round(delta_diff * points_per_delta / 5) * 5  # Round to nearest 5
-                            
-                            print(f"Delta {current_delta:.3f} vs target 0.25 (diff: {delta_diff:.3f})")
-                            print(f"Adjusting strike by {strike_change:+d} points")
-                            
-                            # Cancel current market data request
-                            tws.cancelMktData(req_id)
-                            
-                            # Update strike and request new contract
-                            current_strike = current_strike + strike_change
-                            base_contract.strike = current_strike
-                            
-                            # Request contract details for new strike
-                            contract_req_id = tws.get_next_req_id()
-                            print(f"\nRequesting contract details for strike {current_strike}")
-                            tws.reqContractDetails(contract_req_id, base_contract)
-                            
-                            # Wait for contract details
-                            contract_timeout = time.time() + 5
-                            contract_found = False
-                            while time.time() < contract_timeout:
-                                try:
-                                    contract_msg = tws.data_queue.get(timeout=0.1)
-                                    if contract_msg[0] == 'contract_details':
-                                        _, msg_req_id, contract_details = contract_msg
-                                        if msg_req_id == contract_req_id:
-                                            print("Got contract details")
-                                            base_contract = contract_details.contract
-                                            contract_found = True
-                                            break
-                                except queue.Empty:
-                                    continue
-                                    
-                            if not contract_found:
-                                print("Failed to get contract details for new strike")
-                                break
-                                
-                            # Request market data for new strike
-                            req_id = tws.get_next_req_id()
-                            print(f"Requesting market data for strike {current_strike}")
-                            tws.reqMktData(req_id, base_contract, "100,101,106,236", False, False, [])
-                            attempts += 1
-                            continue
-                        else:
-                            print(f"Found exact target delta: {delta:.3f}")
-                            break
-                        
-            except queue.Empty:
-                continue
-                
-            attempts += 1
-        
-        # Cancel final market data request
-        tws.cancelMktData(req_id)
-        
-        if not initial_put or initial_put.delta is None:
-            print("\nFailed to get delta for initial put. Possible reasons:")
-            print("1. No market data subscription for SPX options")
-            print("2. Option chain not available for specified expiry")
-            print("3. Connection issues with TWS")
-            return
+            # Get option chain for current strike
+            print(f"\nRequesting option chain for strike {current_strike_found}")
+            options = tws.request_option_chain(expiry, "P", current_strike_found, current_strike_found)
             
-        print(f"\nFound initial put - Strike: {initial_put.contract.strike}, Delta: {initial_put.delta:.3f}")
+            if not options:
+                print("No options found at this strike")
+                break
+            
+            # Get delta directly from the option chain data
+            current_delta = options[0].delta if options[0].delta is not None else 0
+            print(f"At strike {current_strike_found}: Got delta {current_delta:.3f}")
+            
+            # Check if we're within acceptable range
+            if abs(abs(current_delta) - target_delta) < acceptable_diff:
+                print(f"Found target delta! Strike: {current_strike_found}, Delta: {current_delta:.3f}")
+                found_put = options[0]
+                break
+            
+            # Calculate how far off we are
+            diff = abs(abs(current_delta) - target_delta)
+            
+            # Adaptive step size based on how far we are from target
+            if diff > 0.1:
+                step = 20
+            elif diff > 0.05:
+                step = 10
+            else:
+                step = 5
+            
+            if abs(current_delta) < target_delta:
+                # Delta too low (not negative enough) -> move higher
+                print(f"Delta too low (|{current_delta:.3f}| < {target_delta}); increasing strike by {step}")
+                current_strike_found += step
+            else:
+                # Delta too high -> move lower
+                print(f"Delta too high (|{current_delta:.3f}| > {target_delta}); decreasing strike by {step}")
+                current_strike_found -= step
+            
+            attempts += 1
+
+        if not found_put:
+            print("Failed to find 25δ put within max attempts")
+            return
+
+        print(f"\nSelected put strike: {found_put.contract.strike}")
+        print(f"Delta: {found_put.delta:.3f}")
         
-        # Calculate strikes for other legs
-        short_strike = initial_put.contract.strike - PUT_FLY_CONFIG.put_width
-        far_strike = initial_put.contract.strike - PUT_FLY_CONFIG.call_width
+        # ------------------ Step 4: Define the Other Legs ------------------
+        # Leg1 (Long): The found 25δ put.
+        long_put_strike = found_put.contract.strike
+        # Leg2 (Short): Put 10 points lower.
+        short_put_strike = long_put_strike - 10
+        # Leg3 (Far Long): Put 50 points lower than the long put strike.
+        far_put_strike = long_put_strike - 50
         
-        print("\nCalculating butterfly legs:")
-        print(f"Long Put Strike: {initial_put.contract.strike}")
-        print(f"Short Put Strike: {short_strike} (x2)")
-        print(f"Far Put Strike: {far_strike}")
+        print("Trade Legs:")
+        print(f"  • Long put at {long_put_strike}")
+        print(f"  • Short put at {short_put_strike} (x2)")
+        print(f"  • Far long put at {far_put_strike}")
         
-        # Get contracts for other legs with same expiry
-        print("\nGetting contracts for other legs...")
-        
-        # Short puts
+        # Create contracts for the short and far legs.
         short_contract = Contract()
         short_contract.symbol = "SPX"
         short_contract.secType = "OPT"
         short_contract.exchange = "SMART"
         short_contract.currency = "USD"
         short_contract.right = "P"
-        short_contract.strike = short_strike
+        short_contract.strike = short_put_strike
         short_contract.lastTradeDateOrContractMonth = expiry
         short_contract.multiplier = "100"
         
-        # Get contract details for short puts
-        contract_req_id = tws.get_next_req_id()
-        print(f"\nRequesting contract details for short puts (reqId: {contract_req_id})")
-        tws.reqContractDetails(contract_req_id, short_contract)
-        
-        # Wait for contract details
-        timeout = time.time() + 5
-        contract_found = False
-        while time.time() < timeout:
-            try:
-                msg = tws.data_queue.get(timeout=0.1)
-                if msg[0] == 'contract_details':
-                    _, msg_req_id, contract_details = msg
-                    if msg_req_id == contract_req_id:
-                        print("Got contract details for short puts")
-                        short_contract = contract_details.contract
-                        contract_found = True
-                        break
-            except queue.Empty:
-                continue
-                
-        if not contract_found:
-            print("Failed to get contract details for short puts")
-            return
-        
-        # Far put
         far_contract = Contract()
         far_contract.symbol = "SPX"
         far_contract.secType = "OPT"
         far_contract.exchange = "SMART"
         far_contract.currency = "USD"
         far_contract.right = "P"
-        far_contract.strike = far_strike
+        far_contract.strike = far_put_strike
         far_contract.lastTradeDateOrContractMonth = expiry
         far_contract.multiplier = "100"
         
-        # Get contract details for far put
-        contract_req_id = tws.get_next_req_id()
-        print(f"\nRequesting contract details for far put (reqId: {contract_req_id})")
-        tws.reqContractDetails(contract_req_id, far_contract)
-        
-        # Wait for contract details
-        timeout = time.time() + 5
-        contract_found = False
-        while time.time() < timeout:
-            try:
-                msg = tws.data_queue.get(timeout=0.1)
-                if msg[0] == 'contract_details':
-                    _, msg_req_id, contract_details = msg
-                    if msg_req_id == contract_req_id:
-                        print("Got contract details for far put")
-                        far_contract = contract_details.contract
-                        contract_found = True
-                        break
-            except queue.Empty:
-                continue
-                
-        if not contract_found:
-            print("Failed to get contract details for far put")
-            return
-        
-        # Get prices for all legs
-        print("\nGetting prices for all legs...")
-        initial_price = tws.get_option_price(initial_put.contract)
+        print("Retrieving market prices for legs...")
+        initial_price = tws.get_option_price(found_put.contract)
         short_price = tws.get_option_price(short_contract)
         far_price = tws.get_option_price(far_contract)
         
         if initial_price == 0 or short_price == 0 or far_price == 0:
-            print("Failed to get prices for all legs")
+            print("Failed to retrieve option prices for one or more legs.")
             return
         
-        # Calculate total credit (Long wings - Short body)
+        print(f"Leg Prices: Long: {initial_price:.2f}, Short: {short_price:.2f}, Far: {far_price:.2f}")
+        
+        # Calculate net credit: (Long leg + Far leg) - (2 x Short leg).
         total_credit = (initial_price + far_price) - (2 * short_price)
+        print(f"Total Credit: {total_credit:.2f}")
         
-        print("\n" + "="*50)
-        print("🦋 PUT BUTTERFLY SUMMARY")
-        print("="*50)
-        print(f"SPX Price: {current_spx:.2f}")
-        print(f"Expiry: {expiry} ({dte}DTE)")
-        print(f"\nLong Put Strike: {initial_put.contract.strike} @ {initial_price:.2f}")
-        print(f"Delta: {initial_put.delta:.3f}")
-        print(f"Short Put Strike: {short_strike} @ {short_price:.2f} (x2)")
-        print(f"Far Put Strike: {far_strike} @ {far_price:.2f}")
-        print(f"\nTotal Credit: {total_credit:.2f}")
-        
-        # Check if credit is sufficient (remember, more negative is better for credit)
         if total_credit > -PUT_FLY_CONFIG.min_credit:
-            print(f"\nCredit {total_credit:.2f} insufficient (need at least {-PUT_FLY_CONFIG.min_credit:.2f}) - Skipping trade")
+            print(f"Credit {total_credit:.2f} insufficient " +
+                  f"(min required is {-PUT_FLY_CONFIG.min_credit:.2f}). Aborting trade.")
             return
-            
-        # Create combo legs for butterfly
+
+        # ------------------ Step 5: Construct and Submit the Combo Order ------------------
+        print("Constructing combo order...")
         combo_legs = []
         
-        # Long put (first wing)
+        # Leg1: Buy 1 put at the 25δ strike.
         leg1 = ComboLeg()
-        leg1.conId = initial_put.contract.conId
+        leg1.conId = found_put.contract.conId
         leg1.ratio = 1
         leg1.action = "BUY"
         leg1.exchange = "SMART"
+        combo_legs.append(leg1)
         
-        # Short puts (body)
+        # Leg2: Sell 2 puts at 10 points lower.
         leg2 = ComboLeg()
         leg2.conId = short_contract.conId
         leg2.ratio = 2
         leg2.action = "SELL"
         leg2.exchange = "SMART"
+        combo_legs.append(leg2)
         
-        # Long put (second wing)
+        # Leg3: Buy 1 put at 50 points lower.
         leg3 = ComboLeg()
         leg3.conId = far_contract.conId
         leg3.ratio = 1
         leg3.action = "BUY"
         leg3.exchange = "SMART"
+        combo_legs.append(leg3)
         
-        combo_legs.extend([leg1, leg2, leg3])
+        # Build the combo contract.
+        combo_contract = Contract()
+        combo_contract.symbol = "SPX"
+        combo_contract.secType = "BAG"
+        combo_contract.currency = "USD"
+        combo_contract.exchange = "SMART"
+        combo_contract.comboLegs = combo_legs
         
-        # Create the BAG contract
-        contract = Contract()
-        contract.symbol = "SPX"
-        contract.secType = "BAG"
-        contract.currency = "USD"
-        contract.exchange = "SMART"
-        contract.comboLegs = combo_legs
-        
-        # Create the order
+        # For a credit spread, IBKR requires the order to be entered with a negative price.
         order = Order()
         order.orderType = "LMT"
         order.totalQuantity = PUT_FLY_CONFIG.quantity
-        order.lmtPrice = total_credit  # Using positive price for credit
-        order.action = "SELL"  # SELL the butterfly to receive credit
+        order.lmtPrice = total_credit  # Expected to be negative, e.g., -3.00
+        order.action = "BUY"  # IBKR requires combo credits to be entered as a BUY at a negative price
         order.tif = "DAY"
         order.eTradeOnly = False
         order.firmQuoteOnly = False
         
-        # Submit the order
-        order_id = tws.next_order_id
+        order_id = random.randint(10000, 99999)
         tws.next_order_id += 1
         
-        print("\nSubmitting Put Butterfly order:")
-        print(f"Order ID: {order_id}")
-        print(f"Quantity: {PUT_FLY_CONFIG.quantity}")
-        print(f"Credit: {total_credit:.2f}")
+        print(f"Submitting combo order with Order ID: {order_id}")
+        tws.placeOrder(order_id, combo_contract, order)
+        print("Order submitted. Monitoring order status for 5 minutes...")
         
-        tws.placeOrder(order_id, contract, order)
-        print("\nOrder submitted - monitoring for 5 minutes...")
-        
-        # Monitor order status
         if not tws.monitor_order(order_id, timeout_seconds=300):
-            print("\nOrder not filled after 5 minutes - canceling")
+            print("Order not filled after 5 minutes, cancelling...")
             tws.cancel_order(order_id)
             return
-            
-        print("\nPut Butterfly order filled successfully!")
+        print("Put Butterfly order filled successfully!")
         
     except Exception as e:
         print(f"Error executing Put Butterfly: {str(e)}")
@@ -513,6 +345,7 @@ class TradingDashboard(QMainWindow):
                         
                         if is_rth:
                             print("Market is open - requesting real-time SPX data...")
+                            # Request all data by using empty string for generic ticks
                             tws.reqMktData(1, tws.get_spx_contract(), "", False, False, [])
                         else:
                             print("Market is closed - requesting SPX historical data...")
@@ -628,7 +461,7 @@ class TradingDashboard(QMainWindow):
                 # Initialize scheduler
                 self.scheduler = TradeScheduler()
                 
-                # Schedule the Put Butterfly for 3 minutes from now
+                # Schedule the Put Butterfly for testing
                 current_time = datetime.now(pytz.timezone('US/Eastern'))
                 test_time = (current_time + timedelta(minutes=3)).strftime("%H:%M")
                 current_day = current_time.strftime('%A')
@@ -637,18 +470,10 @@ class TradingDashboard(QMainWindow):
                     time_et=test_time,
                     trade_name=PUT_FLY_CONFIG.trade_name,
                     trade_func=lambda: execute_put_fly(self.connection_manager),
-                    day=current_day  # Explicitly set today's day
+                    day=current_day
                 )
                 
-                # Schedule the IC trade for today at 14:05 ET
-                self.scheduler.add_trade(
-                    time_et="14:05",
-                    trade_name="IC_0DTE_160130_30",
-                    trade_func=lambda: execute_double_calendar(self.connection_manager, config=CUSTOM_STRANGLE_CONFIG),
-                    day="Wednesday"
-                )
-                
-                # Schedule other trades
+                # Schedule Double Calendar trades using execute_double_calendar with appropriate configs
                 self.scheduler.add_trade(
                     trade_name=DC_CONFIG.trade_name,
                     time_et="10:15",
@@ -659,36 +484,44 @@ class TradingDashboard(QMainWindow):
                 self.scheduler.add_trade(
                     trade_name=DC_CONFIG_2.trade_name,
                     time_et="11:55",
-                    trade_func=lambda: execute_dc_config_2(self.connection_manager),
+                    trade_func=lambda: execute_double_calendar(self.connection_manager, config=DC_CONFIG_2),
                     day="Friday"
                 )
                 
                 self.scheduler.add_trade(
                     trade_name=DC_CONFIG_3.trade_name,
                     time_et="13:00",
-                    trade_func=lambda: execute_dc_config_3(self.connection_manager),
+                    trade_func=lambda: execute_double_calendar(self.connection_manager, config=DC_CONFIG_3),
                     day="Friday"
                 )
                 
                 self.scheduler.add_trade(
                     trade_name=DC_CONFIG_4.trade_name,
                     time_et="14:10",
-                    trade_func=lambda: execute_dc_config_4(self.connection_manager),
+                    trade_func=lambda: execute_double_calendar(self.connection_manager, config=DC_CONFIG_4),
                     day="Friday"
                 )
                 
                 self.scheduler.add_trade(
                     trade_name=DC_CONFIG_5.trade_name,
                     time_et="12:00",
-                    trade_func=lambda: execute_dc_config_5(self.connection_manager),
+                    trade_func=lambda: execute_double_calendar(self.connection_manager, config=DC_CONFIG_5),
                     day="Monday"
                 )
                 
                 self.scheduler.add_trade(
                     trade_name=DC_CONFIG_6.trade_name,
                     time_et="13:30",
-                    trade_func=lambda: execute_dc_config_6(self.connection_manager),
+                    trade_func=lambda: execute_double_calendar(self.connection_manager, config=DC_CONFIG_6),
                     day="Monday"
+                )
+                
+                # Schedule the IC trade
+                self.scheduler.add_trade(
+                    time_et="14:05",
+                    trade_name="IC_0DTE_160130_30",
+                    trade_func=lambda: execute_double_calendar(self.connection_manager, config=CUSTOM_STRANGLE_CONFIG),
+                    day="Wednesday"
                 )
                 
                 # List all scheduled trades
@@ -697,7 +530,7 @@ class TradingDashboard(QMainWindow):
                 print("System ready - monitoring for scheduled trades")
                 
                 # Start timers
-                self.connection_timer.start(1000)  # Check connection every second
+                self.connection_timer.start(1000)
                 self.status_timer = QTimer()
                 self.status_timer.timeout.connect(self.update_status)
                 self.status_timer.start(1000)
@@ -705,10 +538,6 @@ class TradingDashboard(QMainWindow):
                 # Update UI
                 self.start_button.setEnabled(False)
                 self.stop_button.setEnabled(True)
-                
-                # Initial market data setup
-                print("Setting up initial market data...")
-                self.check_connection()  # This will establish initial subscriptions
                 
                 print("Trading system startup complete")
                 
