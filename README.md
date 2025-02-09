@@ -1,6 +1,6 @@
 # SPX Options Trading System
 
-An automated options trading system built with Python and Interactive Brokers TWS API. A work in progress. I'd say about 50% done. Still needs more functionality, testing and error handling capabilities.
+An automated options trading system built with Python and Interactive Brokers TWS API. The system executes complex options strategies with configurable parameters and risk management.
 
 ![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)
 ![PyQt Version](https://img.shields.io/badge/PyQt-6.0%2B-green)
@@ -24,52 +24,109 @@ This system provides a robust foundation for automated options trading with Inte
 
 ### Core Components
 
-#### 1. Trading Dashboard (dashboard.py)
+#### 1. Trading Dashboard (`ui/dashboard.py`)
 - Main GUI application built with PyQt6
-- Provides real-time monitoring of:
+- Real-time monitoring of:
   - Connection status
   - Market hours
   - SPX and ES prices
   - Upcoming scheduled trades
   - System uptime
   - Trade history
-- Handles system startup/shutdown and emergency stops
+- System startup/shutdown controls
+- Emergency stop functionality
 
-#### 2. Trade Execution
-- Supports multiple trade strategies:
-  - Put Butterfly (`execute_put_fly`)
+#### 2. Trade Execution (`trading/executor.py`)
+- Multiple options strategies:
   - Double Calendar spreads
   - Iron Condors
+  - Put/Call Butterflies
   - Custom strangles
-- Each strategy has configurable parameters via `TradeConfig` objects
+- Configurable trade parameters
+- Risk management controls
+- Order monitoring and fill confirmation
 
-#### 3. Trade Scheduling (trade_scheduler.py)
-- Manages scheduled trade execution
-- Supports day-specific and time-specific scheduling
-- Handles market hours and holiday calendars
+#### 3. Trade Management (`trading/manager.py`)
+- Centralized trading system control
+- Active trade monitoring
+- Position tracking
+- P&L monitoring
+- Risk metrics calculation
 
-#### 4. TWS Connection (tws_connector.py)
-- Manages Interactive Brokers TWS API connection
-- Handles market data requests
-- Processes order submissions and monitoring
-- Implements connection recovery and stability features
+#### 4. Option Finding (`trading/option_finder.py`)
+- Delta-based option selection
+- Implied volatility calculations
+- Market hours determination
+- Price level analysis
 
-#### 5. Trade Database (trade_database.py)
-- Records trade history and performance
-- Stores execution details and P&L
+#### 5. Trade Scheduling (`trading/scheduler.py`)
+- Scheduled trade execution
+- Market hours awareness
+- Holiday calendar integration
+- Multiple schedule support
 
-#### 6. Market Analysis (find_delta.py)
-- Calculates option greeks and implied volatility
-- Finds specific delta options
-- Determines market hours and conditions
+#### 6. TWS Connection (`connection/tws_manager.py`)
+- Interactive Brokers TWS API integration
+- Market data management
+- Order routing
+- Connection stability monitoring
+- Auto-reconnection capability
+
+#### 7. Trade Database (`trading/database.py`)
+- SQLite-based trade history
+- Performance tracking
+- Trade analytics
+- Position monitoring
 
 ## Installation
 
+1. Clone the repository:  
+git clone https://github.com/yourusername/spx-options-trading.git
+
+2. Install required packages:
+```bash
+pip install -r requirements.txt
+```
+
+3. Install Interactive Brokers TWS or Gateway
+
 ## Configuration
+
+1. Configure TWS/Gateway:
+   - Enable API connections
+   - Set port number (default: 7497)
+   - Configure market data subscriptions
+
+2. Update configuration files:
+   - Copy `config/config_example.py` to `config/config.py`
+   - Set your TWS connection parameters
+   - Configure trading parameters
 
 ## Usage
 
+1. Start TWS/Gateway and log in
+
+2. Launch the trading system:
+```bash
+python main.py
+```
+
+3. Use the dashboard to:
+   - Monitor market conditions
+   - View scheduled trades
+   - Track active positions
+   - Monitor system status
+
 ## System Architecture
+
+```
+project/
+├── config/          # Configuration settings
+├── connection/      # TWS API connection management
+├── trading/         # Core trading logic
+├── ui/             # User interface components
+└── utils/          # Utility functions
+```
 
 ## Future Improvements
 
