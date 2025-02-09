@@ -1,10 +1,10 @@
-from tws_connector import TWSConnector, OptionPosition
+from connection.tws_connector import TWSConnector, OptionPosition
 import time
 from datetime import datetime, timedelta
 import pytz
-from trade_scheduler import TradeScheduler
-from trade_config import TradeConfig, DC_CONFIG, DC_CONFIG_2, DC_CONFIG_3, DC_CONFIG_4, DC_CONFIG_5, DC_CONFIG_6
-from trade_database import TradeDatabase
+from trading.scheduler import TradeScheduler
+from config.trade_config import TradeConfig, DC_CONFIG, DC_CONFIG_2, DC_CONFIG_3, DC_CONFIG_4, DC_CONFIG_5, DC_CONFIG_6
+from trading.database import TradeDatabase
 import sys
 import threading
 from typing import Optional

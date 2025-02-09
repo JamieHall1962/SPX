@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 from dataclasses import asdict
 from typing import Optional, Dict, Any
@@ -274,4 +274,15 @@ class TradeDatabase:
         if trade_details["adjustments"]:
             print("\nPrice Adjustments:")
             for adj in trade_details["adjustments"]:
-                print(f"  {adj[2]}: {adj[3]:.2f} -> {adj[4]:.2f}")  # time, old_debit, new_debit 
+                print(f"  {adj[2]}: {adj[3]:.2f} -> {adj[4]:.2f}")  # time, old_debit, new_debit
+
+def check_recent_trades():
+    """Check and display the most recent trades from the database"""
+    db = TradeDatabase()
+    recent_trades = db.get_recent_trades(limit=10)  # Get last 10 trades
+    
+    print("\nRecent Trades:")
+    print("=" * 50)
+    
+    for trade_details in recent_trades:
+        db.print_trade_summary(trade_details) 
