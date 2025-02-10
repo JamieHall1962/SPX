@@ -4,13 +4,22 @@ from datetime import datetime
 import pytz
 from typing import Callable, Dict, Any
 import logging
+from config.trade_config import (
+    TradeConfig, TradeType,
+    DC_CONFIG, DC_CONFIG_2, DC_CONFIG_3,
+    DC_CONFIG_4, DC_CONFIG_5, DC_CONFIG_6,
+    IC_CONFIG
+)
 
 class TradeScheduler:
-    def __init__(self):
+    def __init__(self, executor):
+        print("Initializing TradeScheduler...")
         self.et_timezone = pytz.timezone('US/Eastern')
         self.scheduled_trades: Dict[str, Any] = {}
         self.trades = []
         self.last_run = {}  # Track last run time for each trade
+        self.executor = executor  # Store the executor instance
+        print("TradeScheduler initialized")
         
     def add_trade(self, trade_name: str, time_et: str, trade_func: Callable, day: str = "Friday", *args, **kwargs):
         """
@@ -109,6 +118,34 @@ class TradeScheduler:
         
         return None
     
+    def check_trade_conditions(self, config: TradeConfig) -> bool:
+        """Check if current time matches trade entry conditions"""
+        now = datetime.now(pytz.timezone('US/Eastern'))
+        current_time = now.strftime("%H:%M")
+        current_day = now.strftime("%A")
+        
+        return (
+            current_time == config.entry_time 
+            and current_day in config.entry_days 
+            and config.active
+        )
+
     def run(self):
-        """Run the scheduler once"""
-        schedule.run_pending() 
+        """Main scheduling loop"""
+        while True:
+            try:
+                # Check each trade config
+                for config in [DC_CONFIG, DC_CONFIG_2, DC_CONFIG_3, 
+                             DC_CONFIG_4, DC_CONFIG_5, DC_CONFIG_6, IC_CONFIG]:
+                    if self.check_trade_conditions(config):
+                        print(f"Entry conditions met for {config.trade_name}")
+                        if config.trade_type == TradeType.DOUBLE_CALENDAR:
+                            self.executor.execute_double_calendar(config)
+                        elif config.trade_type == TradeType.IRON_CONDOR:
+                            self.executor.execute_iron_condor(config)
+                
+                time.sleep(30)  # Check every 30 seconds
+                
+            except Exception as e:
+                print(f"Error in scheduler: {e}")
+                time.sleep(30)  # Keep running even if there's an error 

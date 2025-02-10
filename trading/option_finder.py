@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 import pytz
 import time
 from typing import Optional
@@ -21,6 +21,17 @@ def get_expiry_from_dte(dte: int) -> str:
         expiry_date += timedelta(days=1)
         
     return expiry_date.strftime('%Y%m%d')
+
+def is_market_hours() -> bool:
+    """Check if current time is during market hours (9:30 AM - 4:15 PM ET)"""
+    et_timezone = pytz.timezone('US/Eastern')
+    current_time = datetime.now(et_timezone).time()
+    
+    market_open = time(9, 30)  # 9:30 AM ET
+    market_close = time(16, 15)  # 4:15 PM ET
+    
+    # Check if current time is between market open and close
+    return market_open <= current_time <= market_close
 
 def find_target_delta_option(tws: TWSConnector, expiry: str, right: str, initial_strike: float, target_delta: float = 0.15) -> Optional[OptionPosition]:
     """Find an option with a target delta using binary search"""

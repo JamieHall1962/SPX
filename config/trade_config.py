@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Dict, Union, Optional
+from typing import List, Dict, Union, Optional, Any
 from enum import Enum
 from datetime import time
 
@@ -71,10 +71,10 @@ class TradeConfig:
         entry_days: List of valid entry days
         legs: List of option legs configurations
         market_condition: Required market condition for entry
-        max_debit: Maximum debit allowed for entry
-        min_credit: Minimum credit required (for credit trades)
         exit_conditions: Dictionary of exit triggers
         time_based_exits: List of exit times
+        max_debit: Maximum debit allowed for entry
+        min_credit: Minimum credit required (for credit trades)
         active: Whether this trade is currently active
         description: Detailed description of the strategy
     """
@@ -84,10 +84,10 @@ class TradeConfig:
     entry_days: List[str]
     legs: List[LegConfig]
     market_condition: MarketCondition
-    max_debit: Optional[float] = None
-    min_credit: Optional[float] = None
     exit_conditions: Dict[str, Union[float, str]]
     time_based_exits: List[ExitTime]
+    max_debit: Optional[float] = None
+    min_credit: Optional[float] = None
     active: bool = True
     description: str = ""
 

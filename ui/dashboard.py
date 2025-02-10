@@ -10,98 +10,133 @@ from PyQt6.QtCore import Qt, QTimer
 
 from trading.manager import TradingManager
 from utils.market_utils import is_market_hours
+from connection.tws_manager import MarketData
 
 class TradingDashboard(QMainWindow):
     def __init__(self):
         super().__init__()
+        print("Initializing Dashboard...")  # Debug print
         self.setWindowTitle("SPX Trading Dashboard")
         self.resize(800, 600)
         
-        # Initialize components
-        self.trading_manager = None
-        self.running = False
-        self.start_time = datetime.now()
+        # Create UI elements FIRST
+        self.create_ui_elements()
         
-        # Create UI
-        self.setup_ui()
+        # THEN initialize trading manager and callbacks
+        self.trading_manager = TradingManager()
+        self.trading_manager.connection_manager.add_status_callback(self.update_status)
+        
+        # Add callbacks with rate limiting
+        self.market_callback_id = self.trading_manager.connection_manager.add_market_callback(
+            self.on_market_update
+        )
         
         # Setup timer for status updates
-        self.status_timer = QTimer()
-        self.status_timer.timeout.connect(self.update_status)
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update_status)
+        self.timer.start(1000)  # Update every second
         
         # Setup close handling
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        print("Dashboard initialized")  # Debug print
+        
+        self.running = False  # Add running flag
+        self.trades_tree = None  # Initialize the attribute
+        self.status_callback_id = None
+    
+    def create_ui_elements(self):
+        """Create all UI elements"""
+        # Status Frame
+        status_frame = QGridLayout()
+        
+        # Connection Status
+        self.connection_status = QLabel('Connection: Disconnected')
+        self.connection_status.setStyleSheet('font-size: 14px; padding: 5px;')
+        
+        # Price Labels
+        self.spx_price_label = QLabel('SPX: --')
+        self.spx_price_label.setStyleSheet('font-size: 14px; padding: 5px;')
+        
+        self.es_price_label = QLabel('ES: --')
+        self.es_price_label.setStyleSheet('font-size: 14px; padding: 5px;')
+        
+        # Control buttons with styling
+        self.start_button = QPushButton('Start Trading')
+        self.start_button.setStyleSheet('font-size: 14px; padding: 10px;')
+        self.start_button.clicked.connect(self.start_trading)
+        
+        self.stop_button = QPushButton('Stop Trading')
+        self.stop_button.setStyleSheet('font-size: 14px; padding: 10px;')
+        self.stop_button.clicked.connect(self.stop_trading)
+        self.stop_button.setEnabled(False)
+        
+        # Add widgets to status layout
+        status_frame.addWidget(self.connection_status, 0, 0)
+        status_frame.addWidget(self.spx_price_label, 1, 0)
+        status_frame.addWidget(self.es_price_label, 1, 1)
+        
+        # Create main layout
+        main_layout = QVBoxLayout()
+        main_layout.addLayout(status_frame)
+        
+        # Create button layout
+        button_layout = QGridLayout()
+        button_layout.addWidget(self.start_button, 0, 0)
+        button_layout.addWidget(self.stop_button, 0, 1)
+        
+        # Add layouts to main layout
+        main_layout.addLayout(button_layout)
+        
+        # Create central widget and set layout
+        central_widget = QWidget()
+        central_widget.setLayout(main_layout)
+        self.setCentralWidget(central_widget)
+        
+        print("UI setup complete")  # Debug print
     
     def start_trading(self):
-        """Start the trading system and UI updates"""
+        """Start trading system"""
+        print("Starting trading...")
         if not self.running:
-            try:
-                print("Starting trading system...")
-                self.running = True
-                
-                # Initialize trading manager
-                self.trading_manager = TradingManager()
-                if not self.trading_manager.start():
-                    raise Exception("Failed to start trading system")
-                
-                # Start UI updates
-                self.status_timer.start(1000)
-                
-                # Update UI
-                self.start_button.setEnabled(False)
-                self.stop_button.setEnabled(True)
-                
-                print("Trading system startup complete")
-                
-            except Exception as e:
-                print(f"Error in start_trading: {str(e)}")
-                self.emergency_stop()
+            self.running = True
+            self.trading_manager.connection_manager.start()
+            self.start_button.setEnabled(False)  # PyQt method
+            self.stop_button.setEnabled(True)    # PyQt method
     
-    def update_status(self):
-        """Update all UI elements with current system status"""
-        try:
-            if not self.running or not self.trading_manager:
+    def stop_trading(self):
+        """Stop trading system"""
+        print("Stopping trading...")
+        if self.running:
+            self.running = False
+            self.trading_manager.connection_manager.stop()
+            self.stop_button.setEnabled(False)   # PyQt method
+            self.start_button.setEnabled(True)   # PyQt method
+    
+    def update_status(self, status=None):
+        """Handle status updates"""
+        if status is None:
+            # If called directly without status, get it from trading manager
+            try:
+                status = self.trading_manager.get_status()
+            except Exception as e:
+                print(f"Error getting status: {e}")
                 return
             
-            # Get status from trading manager
-            status = self.trading_manager.get_status()
-            
-            # Update connection status
-            self.connection_status.setText(
-                "✅ CONNECTED" if status.is_connected else "❌ DISCONNECTED"
-            )
-            
-            # Update market status
-            self.market_hours.setText("Yes" if status.market_open else "No")
-            
-            # Update prices
-            self.spx_price.setText(
-                f"{status.spx_price:.2f}" if status.spx_price else "---.--"
-            )
-            self.es_price.setText(
-                f"{status.es_price:.2f}" if status.es_price else "---.--"
-            )
-            
-            # Update next trade
-            next_trade = status.next_trade
-            if next_trade:
-                self.next_trade.setText(
-                    f"{next_trade['day']} {next_trade['time']} ET - {next_trade['name']}"
-                )
+        try:
+            if status.get("connected"):
+                self.connection_status.setText("Connected")
+                self.connection_status.setStyleSheet('font-size: 14px; padding: 5px; color: green;')
             else:
-                self.next_trade.setText("None")
-            
-            # Update active trades in tree widget
-            self.update_trades_tree(status.active_trades)
-            
-            # Update uptime
-            uptime = datetime.now() - self.start_time
-            hours = int(uptime.total_seconds() // 3600)
-            minutes = int((uptime.total_seconds() % 3600) // 60)
-            self.uptime.setText(f"{hours}h {minutes}m")
-            
+                self.connection_status.setText("Disconnected")
+                self.connection_status.setStyleSheet('font-size: 14px; padding: 5px; color: red;')
+                
+            if status.get("spx_price"):
+                self.spx_price_label.setText(f'SPX: {status["spx_price"]}')
+            if status.get("es_price"):
+                self.es_price_label.setText(f'ES: {status["es_price"]}')
+                
         except Exception as e:
-            print(f"Error updating status: {str(e)}")
+            print(f"Error updating status: {e}")
     
     def update_trades_tree(self, active_trades):
         """Update the trades tree widget with current trade status"""
@@ -123,7 +158,7 @@ class TradingDashboard(QMainWindow):
         print("Emergency stop initiated...")
         try:
             self.running = False
-            self.status_timer.stop()
+            self.timer.stop()
             
             if self.trading_manager:
                 self.trading_manager.stop()
@@ -133,33 +168,43 @@ class TradingDashboard(QMainWindow):
             self.start_button.setEnabled(True)
             self.stop_button.setEnabled(False)
             self.connection_status.setText("❌ DISCONNECTED")
-            self.market_hours.setText("No")
-            self.spx_price.setText("---.--")
-            self.es_price.setText("---.--")
-            self.next_trade.setText("None")
-            self.uptime.setText("0h 0m")
+            self.spx_price_label.setText("---.--")
+            self.es_price_label.setText("---.--")
             self.trades_tree.clear()
             
         except Exception as e:
             print(f"Error in emergency_stop: {str(e)}")
     
     def closeEvent(self, event):
-        """Handle application closure"""
-        print("Close event received...")
-        if self.running:
-            self.emergency_stop()
+        """Handle window close event"""
+        print("Trading system stopped")
+        try:
+            if self.trading_manager and self.trading_manager.connection_manager:
+                if self.market_callback_id is not None:
+                    self.trading_manager.connection_manager.remove_market_callback(
+                        self.market_callback_id
+                    )
+                if self.status_callback_id is not None:
+                    self.trading_manager.connection_manager.remove_status_callback(
+                        self.status_callback_id
+                    )
+        except Exception as e:
+            print(f"Error during shutdown: {e}")
         event.accept()
-        print("Close event completed")
 
-    def setup_ui(self):
-        """Setup all UI components"""
-        # [Your existing UI setup code remains unchanged]
-        pass
+    def on_market_update(self, market_data: MarketData):
+        """Handle market data updates"""
+        if market_data.symbol == "SPX":
+            self.spx_price_label.setText(f'SPX: {market_data.price:.2f}')
+        elif market_data.symbol == "ES":
+            self.es_price_label.setText(f'ES: {market_data.price:.2f}')
 
 def main():
+    print("Starting application...")  # Debug print
     app = QApplication(sys.argv)
     window = TradingDashboard()
     window.show()
+    print("Window should be visible now")  # Debug print
     sys.exit(app.exec())
 
 if __name__ == "__main__":
