@@ -43,9 +43,10 @@ class ActiveTrade:
 class TradingManager:
     """Manages all trading operations"""
     def __init__(self):
+        print("Initializing TradingManager...")
         self.connection_manager = ConnectionManager()
-        self.executor = TradeExecutor(self.connection_manager)  # Create executor first
-        self.scheduler = TradeScheduler(self.executor)    # Pass executor to scheduler
+        self.executor = TradeExecutor(self.connection_manager)
+        self.scheduler = None
         self.active_trades = []
         self.running = False
         self.risk_monitor = RiskMonitor()
@@ -68,37 +69,31 @@ class TradingManager:
         
         # Add risk callback
         self.risk_monitor.add_risk_callback(self.handle_risk_event)
+        print("TradingManager initialized")
     
-    def start(self) -> bool:
+    def start(self):
         """Start the trading system"""
         print("Starting trading system...")
-        try:
-            # Connect to TWS
-            if not self.connection_manager.connect():
-                print("Failed to connect to TWS")
-                return False
-            
-            self.running = True
-            
-            # Start position monitoring in a separate thread
-            self.monitor_thread = threading.Thread(target=self.monitor_positions)
-            self.monitor_thread.daemon = True
-            self.monitor_thread.start()
-            
-            print("Trading system startup complete")
-            return True
-            
-        except Exception as e:
-            print(f"Error starting trading system: {e}")
+        if not self.scheduler:
+            if self.connection_manager.connect():
+                # Add market data callback
+                self.connection_manager.wrapper._market_callbacks.append(self._on_market_data)
+                
+                from trading.scheduler import TradeScheduler
+                from trading.executor import TradeExecutor
+                executor = TradeExecutor(self.connection_manager)
+                self.scheduler = TradeScheduler(executor)
+                self.scheduler.start()
+                return True
             return False
     
     def stop(self):
         """Stop the trading system"""
         print("Stopping trading system...")
-        self.running = False
-        if hasattr(self, 'monitor_thread'):
-            self.monitor_thread.join(timeout=5)
-        self.connection_manager.disconnect()
+        if self.scheduler:
+            self.scheduler.stop()
+            self.connection_manager.disconnect()
+            self.scheduler = None
         print("Trading system stopped")
     
     def _monitoring_loop(self):
@@ -187,14 +182,11 @@ class TradingManager:
         
         return False
     
-    def get_status(self) -> Dict[str, Any]:
-        """Get trading system status"""
-        status = self.connection_manager.get_status()
-        status.update({
-            "running": self.running,
-            "active_trades": len(self.active_trades)
-        })
-        return status
+    def get_status(self) -> dict:
+        """Get current system status"""
+        if not self.connection_manager:
+            return {"connected": False, "spx_price": None, "es_price": None}
+        return self.connection_manager.get_status()
     
     def get_next_trade(self) -> Optional[Dict]:
         """Get the next scheduled trade"""
@@ -413,3 +405,7 @@ class TradingManager:
             except Exception as e:
                 print(f"Error in trade monitoring: {e}")
                 time.sleep(5) 
+
+    def _on_market_data(self, market_data):
+        """Handle market data updates"""
+        pass  # Remove debug print but keep method for callback chain 

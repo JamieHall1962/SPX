@@ -10,7 +10,7 @@ from PyQt6.QtCore import Qt, QTimer
 
 from trading.manager import TradingManager
 from utils.market_utils import is_market_hours
-from connection.tws_manager import MarketData
+from connection.tws_manager import ConnectionManager
 
 class TradingDashboard(QMainWindow):
     def __init__(self):
@@ -99,9 +99,9 @@ class TradingDashboard(QMainWindow):
         print("Starting trading...")
         if not self.running:
             self.running = True
-            self.trading_manager.connection_manager.start()
-            self.start_button.setEnabled(False)  # PyQt method
-            self.stop_button.setEnabled(True)    # PyQt method
+            if self.trading_manager.start():  # Call start method
+                self.start_button.setEnabled(False)
+                self.stop_button.setEnabled(True)
     
     def stop_trading(self):
         """Stop trading system"""
@@ -192,12 +192,12 @@ class TradingDashboard(QMainWindow):
             print(f"Error during shutdown: {e}")
         event.accept()
 
-    def on_market_update(self, market_data: MarketData):
+    def on_market_update(self, market_data):
         """Handle market data updates"""
-        if market_data.symbol == "SPX":
-            self.spx_price_label.setText(f'SPX: {market_data.price:.2f}')
-        elif market_data.symbol == "ES":
-            self.es_price_label.setText(f'ES: {market_data.price:.2f}')
+        if market_data['symbol'] == "SPX":
+            self.spx_price_label.setText(f"SPX: {market_data['price']}")
+        elif market_data['symbol'] == "ES":
+            self.es_price_label.setText(f"ES: {market_data['price']}")
 
 def main():
     print("Starting application...")  # Debug print

@@ -1,0 +1,9 @@
+---
+description: 
+globs: 
+---
+
+# Your rule content
+
+- [core_files.md](mdc:docs/core_files.md)
+- You can use markdown but dont have to

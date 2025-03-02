@@ -10,142 +10,88 @@ from config.trade_config import (
     DC_CONFIG_4, DC_CONFIG_5, DC_CONFIG_6,
     IC_CONFIG
 )
+from threading import Thread, Event
+import traceback
 
 class TradeScheduler:
     def __init__(self, executor):
         print("Initializing TradeScheduler...")
         self.et_timezone = pytz.timezone('US/Eastern')
-        self.scheduled_trades: Dict[str, Any] = {}
-        self.trades = []
-        self.last_run = {}  # Track last run time for each trade
-        self.executor = executor  # Store the executor instance
+        self.executor = executor
+        self._running = False
+        self._stop_event = Event()
+        self._thread = None
+        self.setup_schedules()
         print("TradeScheduler initialized")
-        
-    def add_trade(self, trade_name: str, time_et: str, trade_func: Callable, day: str = "Friday", *args, **kwargs):
-        """
-        Schedule a trade to run at a specific time (ET) on a specific day
-        
-        Args:
-            trade_name: Unique name for this trade
-            time_et: Time in ET (24h format) e.g. "14:43"
-            trade_func: Function to execute
-            day: Day of the week (default: "Friday")
-            *args, **kwargs: Arguments to pass to trade_func
-        """
-        def job():
-            print(f"\n🕒 Executing scheduled trade: {trade_name} at {datetime.now(self.et_timezone).strftime('%H:%M:%S ET')}")
-            try:
-                trade_func(*args, **kwargs)
-            except Exception as e:
-                print(f"Error executing trade {trade_name}: {str(e)}")
-        
-        # Schedule the job for the specified day
-        if day.lower() == "monday":
-            schedule.every().monday.at(time_et).do(job)
-        elif day.lower() == "tuesday":
-            schedule.every().tuesday.at(time_et).do(job)
-        elif day.lower() == "wednesday":
-            schedule.every().wednesday.at(time_et).do(job)
-        elif day.lower() == "thursday":
-            schedule.every().thursday.at(time_et).do(job)
-        else:  # Default to Friday
-            schedule.every().friday.at(time_et).do(job)
-            
-        self.scheduled_trades[trade_name] = {
-            'time': time_et,
-            'day': day,
-            'function': trade_func,
-            'args': args,
-            'kwargs': kwargs
-        }
-        self.trades.append({
-            "name": trade_name,
-            "time_et": time_et,
-            "func": trade_func,
-            "day": day
-        })
-        self.last_run[trade_name] = None
-        print(f"\n📅 Scheduled {trade_name} for {time_et} ET on {day}")
-        
-    def remove_trade(self, trade_name: str):
-        """Remove a scheduled trade"""
-        if trade_name in self.scheduled_trades:
-            schedule.clear(trade_name)
-            del self.scheduled_trades[trade_name]
-            self.trades = [t for t in self.trades if t["name"] != trade_name]
-            print(f"\nRemoved scheduled trade: {trade_name}")
-            
-    def list_trades(self):
-        """List all scheduled trades"""
-        print("\n📋 Scheduled Trades:")
-        for name, details in self.scheduled_trades.items():
-            print(f"- {name}: {details['time']} ET on {details['day']}")
-        print("\nScheduled Trades:")
-        print("-" * 50)
-        for trade in self.trades:
-            print(f"{trade['day']} {trade['time_et']} ET: {trade['name']}")
-        print("-" * 50)
-            
-    def get_next_trade(self):
-        """Get the next scheduled trade"""
-        if not self.trades:
-            return None
-            
-        et_now = datetime.now(pytz.timezone('US/Eastern'))
-        current_day = et_now.strftime('%A')
-        current_time = et_now.strftime('%H:%M')
-        
-        # First, look for trades today
-        todays_trades = [t for t in self.trades if t['day'] == current_day]
-        future_trades = [t for t in todays_trades if t['time_et'] > current_time]
-        
-        if future_trades:
-            # Return the next trade today
-            return min(future_trades, key=lambda x: x['time_et'])
-        
-        # If no trades left today, find the next day that has trades
-        days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-        current_day_idx = days.index(current_day)
-        
-        for i in range(1, 8):  # Look through next 7 days
-            next_day_idx = (current_day_idx + i) % 7
-            next_day = days[next_day_idx]
-            next_day_trades = [t for t in self.trades if t['day'] == next_day]
-            
-            if next_day_trades:
-                # Return the first trade of the next trading day
-                return min(next_day_trades, key=lambda x: x['time_et'])
-        
-        return None
-    
-    def check_trade_conditions(self, config: TradeConfig) -> bool:
-        """Check if current time matches trade entry conditions"""
-        now = datetime.now(pytz.timezone('US/Eastern'))
-        current_time = now.strftime("%H:%M")
+
+    def setup_schedules(self):
+        """Setup all trade schedules"""
+        print("Setting up trade schedules...")
+        for config in [DC_CONFIG, DC_CONFIG_2, DC_CONFIG_3, 
+                      DC_CONFIG_4, DC_CONFIG_5, DC_CONFIG_6, IC_CONFIG]:
+            hour, minute = config.entry_time.split(":")
+            for day in config.entry_days:
+                schedule.every().day.at(config.entry_time).do(
+                    self.check_and_execute_trade, config
+                ).tag(config.trade_name)
+            print(f"Scheduled {config.trade_name} for {config.entry_time} on {config.entry_days}")
+
+    def check_and_execute_trade(self, config: TradeConfig) -> bool:
+        """Check conditions and execute trade if met"""
+        now = datetime.now(self.et_timezone)
         current_day = now.strftime("%A")
         
-        return (
-            current_time == config.entry_time 
-            and current_day in config.entry_days 
-            and config.active
-        )
+        if current_day in config.entry_days and config.active:
+            print(f"✨ Entry conditions met for {config.trade_name}")
+            if config.trade_type == TradeType.DOUBLE_CALENDAR:
+                return self.executor.execute_double_calendar(config)
+            elif config.trade_type == TradeType.IRON_CONDOR:
+                return self.executor.execute_iron_condor(config)
+        return False
 
-    def run(self):
+    def start(self):
+        """Start the scheduler in a separate thread"""
+        print("Starting scheduler...")
+        self._running = True
+        self._stop_event.clear()
+        self._thread = Thread(target=self._run_loop, daemon=True)
+        self._thread.start()
+
+    def stop(self):
+        """Stop the scheduler"""
+        print("Stopping scheduler...")
+        self._running = False
+        self._stop_event.set()
+        if self._thread:
+            self._thread.join(timeout=5)
+        schedule.clear()
+
+    def _run_loop(self):
         """Main scheduling loop"""
-        while True:
+        print("Scheduler loop running...")
+        while self._running and not self._stop_event.is_set():
             try:
-                # Check each trade config
-                for config in [DC_CONFIG, DC_CONFIG_2, DC_CONFIG_3, 
-                             DC_CONFIG_4, DC_CONFIG_5, DC_CONFIG_6, IC_CONFIG]:
-                    if self.check_trade_conditions(config):
-                        print(f"Entry conditions met for {config.trade_name}")
-                        if config.trade_type == TradeType.DOUBLE_CALENDAR:
-                            self.executor.execute_double_calendar(config)
-                        elif config.trade_type == TradeType.IRON_CONDOR:
-                            self.executor.execute_iron_condor(config)
+                schedule.run_pending()
+                if not self._running:
+                    print("Running flag turned off - stopping scheduler")
+                    return
+                if self._stop_event.is_set():
+                    print("Stop event set - stopping scheduler")
+                    return
                 
-                time.sleep(30)  # Check every 30 seconds
+                # Check if TWS is still connected
+                if not self.executor.connection_manager.is_connected():
+                    print("TWS connection lost - attempting reconnect")
+                    self.executor.connection_manager.connect()
+                
+                if self._stop_event.wait(1):
+                    print("Scheduler stop requested during wait")
+                    return
                 
             except Exception as e:
-                print(f"Error in scheduler: {e}")
-                time.sleep(30)  # Keep running even if there's an error 
+                print(f"❌ Critical error in scheduler loop: {e}")
+                traceback.print_exc()
+                print("Attempting to continue...")
+                if self._stop_event.wait(1):
+                    print("Scheduler stop requested after error")
+                    return 

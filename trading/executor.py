@@ -3,9 +3,10 @@ from typing import Optional
 from datetime import datetime
 import pytz
 from config.trade_config import TradeConfig, TradeType
-from connection.tws_manager import ConnectionManager
+from connection.tws_manager import ConnectionManager, OptionPosition
 from trading.option_finder import find_target_delta_option, get_expiry_from_dte
 from trading.database import TradeDatabase
+import traceback
 
 class TradeExecutor:
     def __init__(self, connection_manager: ConnectionManager):
@@ -21,34 +22,58 @@ class TradeExecutor:
     
     def execute_double_calendar(self, config: TradeConfig) -> bool:
         """Execute a double calendar spread"""
-        print(f"\nExecuting Double Calendar trade: {config.trade_name}")
+        print(f"\n🔄 Executing Double Calendar trade: {config.trade_name}")
         
         tws = self.connection_manager.get_tws()
         if not tws:
-            print("No TWS connection available")
+            print("❌ No TWS connection available")
             return False
             
         # Get current market price
         spx_price = tws.spx_price
         if not spx_price:
-            print("Unable to get current SPX price")
+            print("❌ Unable to get current SPX price")
             return False
             
-        print(f"Current SPX price: {spx_price}")
+        print(f"📊 Current SPX price: {spx_price}")
         
-        # Get expiry dates from leg configs
-        near_expiry = get_expiry_from_dte(config.legs[1].dte)  # Short put DTE
-        far_expiry = get_expiry_from_dte(config.legs[0].dte)   # Long put DTE
-        
-        print(f"\nLooking for options with:")
-        print(f"Near-term expiry: {near_expiry}")
-        print(f"Far-term expiry: {far_expiry}")
-        
-        # Find all required options using leg configs
-        near_put = find_target_delta_option(tws, near_expiry, "P", spx_price, config.legs[1].delta_target)
-        far_put = find_target_delta_option(tws, far_expiry, "P", near_put.contract.strike + config.legs[0].strike_offset, None)
-        near_call = find_target_delta_option(tws, near_expiry, "C", spx_price, config.legs[3].delta_target)
-        far_call = find_target_delta_option(tws, far_expiry, "C", near_call.contract.strike + config.legs[2].strike_offset, None)
+        try:
+            # Get expiry dates from leg configs
+            near_expiry = get_expiry_from_dte(config.legs[1].dte)
+            far_expiry = get_expiry_from_dte(config.legs[0].dte)
+            
+            print(f"\n🔍 Looking for options with:")
+            print(f"Near-term expiry: {near_expiry}")
+            print(f"Far-term expiry: {far_expiry}")
+            
+            # Find all required options
+            print("\nFinding options...")
+            near_put = find_target_delta_option(tws, near_expiry, "P", spx_price, config.legs[1].delta_target)
+            if not near_put:
+                print("❌ Failed to find near-term put")
+                return False
+                
+            far_put = find_target_delta_option(tws, far_expiry, "P", near_put.contract.strike + config.legs[0].strike_offset, None)
+            if not far_put:
+                print("❌ Failed to find far-term put")
+                return False
+                
+            near_call = find_target_delta_option(tws, near_expiry, "C", spx_price, config.legs[3].delta_target)
+            if not near_call:
+                print("❌ Failed to find near-term call")
+                return False
+                
+            far_call = find_target_delta_option(tws, far_expiry, "C", near_call.contract.strike + config.legs[2].strike_offset, None)
+            if not far_call:
+                print("❌ Failed to find far-term call")
+                return False
+            
+            print("\n✅ All options found, submitting order...")
+            
+        except Exception as e:
+            print(f"❌ Error during option finding: {e}")
+            traceback.print_exc()
+            return False
         
         # Submit the order
         order_id = tws.submit_double_calendar(
