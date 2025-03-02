@@ -1,0 +1,81 @@
+2025-03-02 11:12:28,822 - sandbox_gui - INFO - Option Strategy Sandbox GUI initialized
+2025-03-02 11:12:43,345 - sandbox_gui - INFO - Market settings updated: SPX=4500.0, IV=20.0%
+2025-03-02 11:13:43,159 - sandbox_gui - INFO - Market settings updated: SPX=5950.0, IV=20.0%
+2025-03-02 11:37:17,338 - sandbox_gui - INFO - Option Strategy Sandbox GUI initialized
+2025-03-02 11:37:23,512 - sandbox_gui - INFO - Market settings updated: SPX=4500.0, IV=20.0%
+2025-03-02 11:46:11,602 - sandbox_gui - INFO - Option Strategy Sandbox GUI initialized
+2025-03-02 11:46:20,444 - sandbox_gui - INFO - Market settings updated: SPX=4500.0, IV=20.0%
+2025-03-02 11:46:49,696 - sandbox_gui - INFO - Market settings updated: SPX=5950.0, IV=20.0%
+2025-03-02 11:46:51,986 - sandbox_gui - ERROR - Error running test: OptionData.__init__() got an unexpected keyword argument 'bid_price'
+2025-03-02 11:47:04,083 - sandbox_gui - ERROR - Error running test: OptionData.__init__() got an unexpected keyword argument 'bid_price'
+2025-03-02 12:12:40,761 - sandbox_gui - INFO - Option Strategy Sandbox GUI initialized
+2025-03-02 12:12:50,864 - sandbox_gui - ERROR - Error running test: 'mid'
+2025-03-02 12:13:00,566 - sandbox_gui - INFO - Market settings updated: SPX=5900.0, IV=20.0%
+2025-03-02 12:13:03,161 - sandbox_gui - ERROR - Error running test: 'mid'
+2025-03-02 12:13:08,935 - sandbox_gui - ERROR - Error running test: 'mid'
+2025-03-02 12:29:06,768 - sandbox_gui - INFO - Connected to IBKR - using real market data
+2025-03-02 12:34:57,534 - sandbox_gui - INFO - Connected to IBKR - using real market data
+2025-03-02 12:38:14,643 - sandbox_gui - INFO - Connected to IBKR - using real market data
+2025-03-02 12:38:14,729 - sandbox_gui - INFO - Option Strategy Sandbox GUI initialized
+2025-03-02 12:40:46,098 - sandbox_gui - INFO - Connected to IBKR - using real market data
+2025-03-02 12:40:46,176 - sandbox_gui - INFO - Option Strategy Sandbox GUI initialized
+2025-03-02 12:41:01,225 - sandbox_gui - ERROR - Error running test: StrikeTester.test_iron_condor() missing 1 required positional argument: 'wing_width'
+2025-03-02 12:46:22,115 - sandbox_gui - INFO - Connected to IBKR - using real market data
+2025-03-02 12:46:22,187 - sandbox_gui - INFO - Option Strategy Sandbox GUI initialized
+2025-03-02 12:46:27,437 - sandbox_gui - ERROR - Error running test: 'StrikeSelector' object has no attribute 'select_iron_condor_strikes'
+2025-03-02 12:52:55,794 - sandbox_gui - INFO - Connected to IBKR - using real market data
+2025-03-02 12:52:55,869 - sandbox_gui - INFO - Option Strategy Sandbox GUI initialized
+2025-03-02 12:53:02,845 - sandbox_gui - ERROR - Error running test: 'OptionStrategySandboxGUI' object has no attribute '_update_results_display'
+2025-03-02 12:59:08,614 - sandbox_gui - INFO - Connected to IBKR - using real market data
+2025-03-02 12:59:08,684 - sandbox_gui - INFO - Option Strategy Sandbox GUI initialized
+2025-03-02 13:04:27,462 - sandbox_gui - INFO - Connected to IBKR - using real market data
+2025-03-02 13:04:27,535 - sandbox_gui - INFO - Option Strategy Sandbox GUI initialized
+2025-03-02 13:13:14,019 - sandbox_gui - INFO - Connected to IBKR - using real market data
+2025-03-02 13:13:14,093 - sandbox_gui - INFO - Option Strategy Sandbox GUI initialized
+2025-03-02 13:20:04,128 - sandbox_gui - INFO - Connected to IBKR - using real market data
+2025-03-02 13:20:04,201 - sandbox_gui - INFO - Option Strategy Sandbox GUI initialized
+2025-03-02 13:44:23,812 - sandbox_gui - INFO - Connected to IBKR - using real market data
+2025-03-02 13:44:23,883 - sandbox_gui - INFO - Option Strategy Sandbox GUI initialized
+2025-03-02 13:53:40,464 - sandbox_gui - INFO - Connected to IBKR - using real market data
+2025-03-02 13:53:40,537 - sandbox_gui - INFO - Option Strategy Sandbox GUI initialized
+2025-03-02 13:53:57,686 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 13:54:00,778 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 13:54:03,871 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 13:54:06,957 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 13:54:10,050 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 13:54:13,148 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 13:54:16,241 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 13:54:19,334 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 13:54:22,434 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 13:54:25,527 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 13:54:28,619 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 13:54:31,715 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 13:56:58,736 - sandbox_gui - INFO - Connected to IBKR - using real market data
+2025-03-02 13:56:58,808 - sandbox_gui - INFO - Option Strategy Sandbox GUI initialized
+2025-03-02 14:02:18,567 - sandbox_gui - INFO - Connected to IBKR - using real market data
+2025-03-02 14:02:18,650 - sandbox_gui - INFO - Option Strategy Sandbox GUI initialized
+2025-03-02 14:24:22,946 - sandbox_gui - INFO - Connected to IBKR - using real market data
+2025-03-02 14:24:23,020 - sandbox_gui - INFO - Option Strategy Sandbox GUI initialized
+2025-03-02 14:24:48,177 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 14:24:51,277 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 14:24:54,372 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 14:24:57,457 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 14:25:00,561 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 14:25:03,670 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 14:25:06,757 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 14:25:09,845 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 14:25:12,935 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 14:25:16,028 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 14:25:19,119 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 14:25:22,200 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 14:25:25,291 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 14:25:28,391 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 14:25:31,489 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 14:25:34,581 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 14:25:37,673 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 14:25:40,767 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 14:25:43,860 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 14:25:46,956 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 14:25:50,039 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 14:25:53,127 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop
+2025-03-02 14:25:56,224 - sandbox_gui - ERROR - Error updating price: main thread is not in main loop

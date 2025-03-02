@@ -1,0 +1,211 @@
+2025-03-02 12:29:06,655 - ibkr_connector - INFO - Connecting to TWS at 127.0.0.1:7496 with client ID 10
+2025-03-02 12:29:06,672 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:uscrypto
+2025-03-02 12:29:06,672 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfuture
+2025-03-02 12:29:06,672 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfarm.nj
+2025-03-02 12:29:06,673 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:eufarm
+2025-03-02 12:29:06,673 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfarm
+2025-03-02 12:29:06,673 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usopt
+2025-03-02 12:29:06,673 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:euhmds
+2025-03-02 12:29:06,673 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:cashhmds
+2025-03-02 12:29:06,673 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:fundfarm
+2025-03-02 12:29:06,673 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:ushmds
+2025-03-02 12:29:06,673 - ibkr_connector - ERROR - Error 2158: Sec-def data farm connection is OK:secdefil
+2025-03-02 12:29:06,768 - ibkr_connector - INFO - Successfully connected to TWS
+2025-03-02 12:34:57,428 - ibkr_connector - INFO - Connecting to TWS at 127.0.0.1:7496 with client ID 10
+2025-03-02 12:34:57,435 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:uscrypto
+2025-03-02 12:34:57,435 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfuture
+2025-03-02 12:34:57,435 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfarm.nj
+2025-03-02 12:34:57,435 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:eufarm
+2025-03-02 12:34:57,436 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfarm
+2025-03-02 12:34:57,436 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usopt
+2025-03-02 12:34:57,436 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:euhmds
+2025-03-02 12:34:57,436 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:cashhmds
+2025-03-02 12:34:57,436 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:fundfarm
+2025-03-02 12:34:57,436 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:ushmds
+2025-03-02 12:34:57,436 - ibkr_connector - ERROR - Error 2158: Sec-def data farm connection is OK:secdefil
+2025-03-02 12:34:57,534 - ibkr_connector - INFO - Successfully connected to TWS
+2025-03-02 12:38:14,536 - ibkr_connector - INFO - Connecting to TWS at 127.0.0.1:7496 with client ID 10
+2025-03-02 12:38:14,544 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:uscrypto
+2025-03-02 12:38:14,544 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfuture
+2025-03-02 12:38:14,544 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfarm.nj
+2025-03-02 12:38:14,545 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:eufarm
+2025-03-02 12:38:14,545 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfarm
+2025-03-02 12:38:14,545 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usopt
+2025-03-02 12:38:14,545 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:euhmds
+2025-03-02 12:38:14,545 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:cashhmds
+2025-03-02 12:38:14,545 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:fundfarm
+2025-03-02 12:38:14,545 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:ushmds
+2025-03-02 12:38:14,545 - ibkr_connector - ERROR - Error 2158: Sec-def data farm connection is OK:secdefil
+2025-03-02 12:38:14,643 - ibkr_connector - INFO - Successfully connected to TWS
+2025-03-02 12:40:45,992 - ibkr_connector - INFO - Connecting to TWS at 127.0.0.1:7496 with client ID 10
+2025-03-02 12:40:45,999 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:uscrypto
+2025-03-02 12:40:45,999 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfuture
+2025-03-02 12:40:45,999 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfarm.nj
+2025-03-02 12:40:45,999 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:eufarm
+2025-03-02 12:40:45,999 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfarm
+2025-03-02 12:40:45,999 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usopt
+2025-03-02 12:40:45,999 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:euhmds
+2025-03-02 12:40:45,999 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:cashhmds
+2025-03-02 12:40:45,999 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:fundfarm
+2025-03-02 12:40:45,999 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:ushmds
+2025-03-02 12:40:46,000 - ibkr_connector - ERROR - Error 2158: Sec-def data farm connection is OK:secdefil
+2025-03-02 12:40:46,098 - ibkr_connector - INFO - Successfully connected to TWS
+2025-03-02 12:46:22,009 - ibkr_connector - INFO - Connecting to TWS at 127.0.0.1:7496 with client ID 10
+2025-03-02 12:46:22,015 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:uscrypto
+2025-03-02 12:46:22,016 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfuture
+2025-03-02 12:46:22,016 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfarm.nj
+2025-03-02 12:46:22,016 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:eufarm
+2025-03-02 12:46:22,016 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfarm
+2025-03-02 12:46:22,016 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usopt
+2025-03-02 12:46:22,016 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:euhmds
+2025-03-02 12:46:22,016 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:cashhmds
+2025-03-02 12:46:22,017 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:fundfarm
+2025-03-02 12:46:22,017 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:ushmds
+2025-03-02 12:46:22,017 - ibkr_connector - ERROR - Error 2158: Sec-def data farm connection is OK:secdefil
+2025-03-02 12:46:22,115 - ibkr_connector - INFO - Successfully connected to TWS
+2025-03-02 12:52:55,689 - ibkr_connector - INFO - Connecting to TWS at 127.0.0.1:7496 with client ID 10
+2025-03-02 12:52:55,695 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:uscrypto
+2025-03-02 12:52:55,696 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfuture
+2025-03-02 12:52:55,696 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfarm.nj
+2025-03-02 12:52:55,696 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:eufarm
+2025-03-02 12:52:55,696 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfarm
+2025-03-02 12:52:55,696 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usopt
+2025-03-02 12:52:55,696 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:euhmds
+2025-03-02 12:52:55,696 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:cashhmds
+2025-03-02 12:52:55,697 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:fundfarm
+2025-03-02 12:52:55,697 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:ushmds
+2025-03-02 12:52:55,697 - ibkr_connector - ERROR - Error 2158: Sec-def data farm connection is OK:secdefil
+2025-03-02 12:52:55,794 - ibkr_connector - INFO - Successfully connected to TWS
+2025-03-02 12:59:08,508 - ibkr_connector - INFO - Connecting to TWS at 127.0.0.1:7496 with client ID 10
+2025-03-02 12:59:08,515 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:uscrypto
+2025-03-02 12:59:08,515 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfuture
+2025-03-02 12:59:08,515 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfarm.nj
+2025-03-02 12:59:08,515 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:eufarm
+2025-03-02 12:59:08,515 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfarm
+2025-03-02 12:59:08,515 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usopt
+2025-03-02 12:59:08,516 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:euhmds
+2025-03-02 12:59:08,516 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:cashhmds
+2025-03-02 12:59:08,516 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:fundfarm
+2025-03-02 12:59:08,516 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:ushmds
+2025-03-02 12:59:08,516 - ibkr_connector - ERROR - Error 2158: Sec-def data farm connection is OK:secdefil
+2025-03-02 12:59:08,614 - ibkr_connector - INFO - Successfully connected to TWS
+2025-03-02 13:04:27,355 - ibkr_connector - INFO - Connecting to TWS at 127.0.0.1:7496 with client ID 10
+2025-03-02 13:04:27,364 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:uscrypto
+2025-03-02 13:04:27,365 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfuture
+2025-03-02 13:04:27,365 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfarm.nj
+2025-03-02 13:04:27,365 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:eufarm
+2025-03-02 13:04:27,365 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfarm
+2025-03-02 13:04:27,365 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usopt
+2025-03-02 13:04:27,365 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:euhmds
+2025-03-02 13:04:27,365 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:cashhmds
+2025-03-02 13:04:27,365 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:fundfarm
+2025-03-02 13:04:27,365 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:ushmds
+2025-03-02 13:04:27,365 - ibkr_connector - ERROR - Error 2158: Sec-def data farm connection is OK:secdefil
+2025-03-02 13:04:27,462 - ibkr_connector - INFO - Successfully connected to TWS
+2025-03-02 13:13:13,912 - ibkr_connector - INFO - Connecting to TWS at 127.0.0.1:7496 with client ID 10
+2025-03-02 13:13:13,919 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:uscrypto
+2025-03-02 13:13:13,920 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfuture
+2025-03-02 13:13:13,920 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfarm.nj
+2025-03-02 13:13:13,920 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:eufarm
+2025-03-02 13:13:13,920 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfarm
+2025-03-02 13:13:13,920 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usopt
+2025-03-02 13:13:13,920 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:euhmds
+2025-03-02 13:13:13,920 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:cashhmds
+2025-03-02 13:13:13,921 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:fundfarm
+2025-03-02 13:13:13,921 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:ushmds
+2025-03-02 13:13:13,921 - ibkr_connector - ERROR - Error 2158: Sec-def data farm connection is OK:secdefil
+2025-03-02 13:13:14,019 - ibkr_connector - INFO - Successfully connected to TWS
+2025-03-02 13:13:16,263 - ibkr_connector - INFO - Current SPX price: 5861.57
+2025-03-02 13:13:16,264 - ibkr_connector - INFO - Generated 706 strikes from 4100 to 7625
+2025-03-02 13:20:04,021 - ibkr_connector - INFO - Connecting to TWS at 127.0.0.1:7496 with client ID 10
+2025-03-02 13:20:04,030 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:uscrypto
+2025-03-02 13:20:04,030 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfuture
+2025-03-02 13:20:04,030 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfarm.nj
+2025-03-02 13:20:04,030 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:eufarm
+2025-03-02 13:20:04,030 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfarm
+2025-03-02 13:20:04,031 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usopt
+2025-03-02 13:20:04,031 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:euhmds
+2025-03-02 13:20:04,031 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:cashhmds
+2025-03-02 13:20:04,031 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:fundfarm
+2025-03-02 13:20:04,031 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:ushmds
+2025-03-02 13:20:04,031 - ibkr_connector - ERROR - Error 2158: Sec-def data farm connection is OK:secdefil
+2025-03-02 13:20:04,128 - ibkr_connector - INFO - Successfully connected to TWS
+2025-03-02 13:20:13,710 - ibkr_connector - INFO - Current SPX price: 5861.57
+2025-03-02 13:20:13,710 - ibkr_connector - INFO - Generated 706 strikes from 4100 to 7625
+2025-03-02 13:20:35,141 - ibkr_connector - INFO - Current SPX price: 5861.57
+2025-03-02 13:20:35,141 - ibkr_connector - INFO - Generated 706 strikes from 4100 to 7625
+2025-03-02 13:44:23,706 - ibkr_connector - INFO - Connecting to TWS at 127.0.0.1:7496 with client ID 10
+2025-03-02 13:44:23,713 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:uscrypto
+2025-03-02 13:44:23,714 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfuture
+2025-03-02 13:44:23,714 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfarm.nj
+2025-03-02 13:44:23,714 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:eufarm
+2025-03-02 13:44:23,714 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfarm
+2025-03-02 13:44:23,714 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usopt
+2025-03-02 13:44:23,714 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:euhmds
+2025-03-02 13:44:23,714 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:cashhmds
+2025-03-02 13:44:23,714 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:fundfarm
+2025-03-02 13:44:23,714 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:ushmds
+2025-03-02 13:44:23,714 - ibkr_connector - ERROR - Error 2158: Sec-def data farm connection is OK:secdefil
+2025-03-02 13:44:23,812 - ibkr_connector - INFO - Successfully connected to TWS
+2025-03-02 13:44:26,944 - ibkr_connector - INFO - Current SPX price: 5861.57
+2025-03-02 13:44:26,944 - ibkr_connector - INFO - Generated 706 strikes from 4100 to 7625
+2025-03-02 13:53:40,359 - ibkr_connector - INFO - Connecting to TWS at 127.0.0.1:7496 with client ID 10
+2025-03-02 13:53:40,364 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:uscrypto
+2025-03-02 13:53:40,365 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfuture
+2025-03-02 13:53:40,365 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfarm.nj
+2025-03-02 13:53:40,365 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:eufarm
+2025-03-02 13:53:40,365 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfarm
+2025-03-02 13:53:40,365 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usopt
+2025-03-02 13:53:40,365 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:euhmds
+2025-03-02 13:53:40,365 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:cashhmds
+2025-03-02 13:53:40,365 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:fundfarm
+2025-03-02 13:53:40,365 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:ushmds
+2025-03-02 13:53:40,365 - ibkr_connector - ERROR - Error 2158: Sec-def data farm connection is OK:secdefil
+2025-03-02 13:53:40,464 - ibkr_connector - INFO - Successfully connected to TWS
+2025-03-02 13:53:45,058 - ibkr_connector - INFO - Current SPX price: 5861.57
+2025-03-02 13:53:45,058 - ibkr_connector - INFO - Generated 706 strikes from 4100 to 7625
+2025-03-02 13:56:58,631 - ibkr_connector - INFO - Connecting to TWS at 127.0.0.1:7496 with client ID 10
+2025-03-02 13:56:58,637 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:uscrypto
+2025-03-02 13:56:58,637 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfuture
+2025-03-02 13:56:58,637 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfarm.nj
+2025-03-02 13:56:58,638 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:eufarm
+2025-03-02 13:56:58,638 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfarm
+2025-03-02 13:56:58,638 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usopt
+2025-03-02 13:56:58,638 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:euhmds
+2025-03-02 13:56:58,638 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:cashhmds
+2025-03-02 13:56:58,638 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:fundfarm
+2025-03-02 13:56:58,638 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:ushmds
+2025-03-02 13:56:58,638 - ibkr_connector - ERROR - Error 2158: Sec-def data farm connection is OK:secdefil
+2025-03-02 13:56:58,736 - ibkr_connector - INFO - Successfully connected to TWS
+2025-03-02 13:57:01,922 - ibkr_connector - INFO - Current SPX price: 5861.57
+2025-03-02 13:57:01,922 - ibkr_connector - INFO - Generated 706 strikes from 4100 to 7625
+2025-03-02 14:02:18,462 - ibkr_connector - INFO - Connecting to TWS at 127.0.0.1:7496 with client ID 10
+2025-03-02 14:02:18,467 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:uscrypto
+2025-03-02 14:02:18,467 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfuture
+2025-03-02 14:02:18,467 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfarm.nj
+2025-03-02 14:02:18,467 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:eufarm
+2025-03-02 14:02:18,468 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfarm
+2025-03-02 14:02:18,468 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usopt
+2025-03-02 14:02:18,468 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:euhmds
+2025-03-02 14:02:18,468 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:cashhmds
+2025-03-02 14:02:18,468 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:fundfarm
+2025-03-02 14:02:18,468 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:ushmds
+2025-03-02 14:02:18,468 - ibkr_connector - ERROR - Error 2158: Sec-def data farm connection is OK:secdefil
+2025-03-02 14:02:18,567 - ibkr_connector - INFO - Successfully connected to TWS
+2025-03-02 14:02:20,365 - ibkr_connector - INFO - Current SPX price: 5861.57
+2025-03-02 14:02:20,365 - ibkr_connector - INFO - Generated 706 strikes from 4100 to 7625
+2025-03-02 14:24:22,840 - ibkr_connector - INFO - Connecting to TWS at 127.0.0.1:7496 with client ID 10
+2025-03-02 14:24:22,847 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:uscrypto
+2025-03-02 14:24:22,847 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfuture
+2025-03-02 14:24:22,847 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfarm.nj
+2025-03-02 14:24:22,847 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:eufarm
+2025-03-02 14:24:22,848 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usfarm
+2025-03-02 14:24:22,848 - ibkr_connector - ERROR - Error 2104: Market data farm connection is OK:usopt
+2025-03-02 14:24:22,848 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:euhmds
+2025-03-02 14:24:22,848 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:cashhmds
+2025-03-02 14:24:22,848 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:fundfarm
+2025-03-02 14:24:22,848 - ibkr_connector - ERROR - Error 2106: HMDS data farm connection is OK:ushmds
+2025-03-02 14:24:22,848 - ibkr_connector - ERROR - Error 2158: Sec-def data farm connection is OK:secdefil
+2025-03-02 14:24:22,946 - ibkr_connector - INFO - Successfully connected to TWS
+2025-03-02 14:24:26,508 - ibkr_connector - INFO - Current SPX price: 5861.57
+2025-03-02 14:24:26,509 - ibkr_connector - INFO - Generated 706 strikes from 4100 to 7625

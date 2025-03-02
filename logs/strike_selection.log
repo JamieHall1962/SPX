@@ -1,0 +1,39 @@
+2025-03-02 11:12:55,673 - strike_selection - INFO - Selecting strikes for iron condor: SPX DTE: 1 (expiry: 20250303), Put delta: 0.16, Call delta: 0.16, Wing width: 20
+2025-03-02 11:12:55,674 - strike_selection - INFO - Found strike by delta 0.16: SPX 20250303 4000.0 P Bid: 45.37 Ask: 47.69 Delta: -0.444
+2025-03-02 11:12:55,674 - strike_selection - INFO - Found strike by delta 0.16: SPX 20250303 5000.0 C Bid: 45.37 Ask: 47.69 Delta: 0.444
+2025-03-02 11:12:55,674 - strike_selection - INFO - Found strike by offset -20 from 4000.0: SPX 20250303 4000.0 P Bid: 45.37 Ask: 47.69 Delta: -0.444
+2025-03-02 11:12:55,674 - strike_selection - INFO - Found strike by offset 20 from 5000.0: SPX 20250303 5000.0 C Bid: 45.37 Ask: 47.69 Delta: 0.444
+2025-03-02 11:13:43,196 - strike_selection - INFO - Selecting strikes for iron condor: SPX DTE: 1 (expiry: 20250303), Put delta: 0.16, Call delta: 0.16, Wing width: 20
+2025-03-02 11:13:43,197 - strike_selection - INFO - Found strike by delta 0.16: SPX 20250303 4000.0 P Bid: 54.55 Ask: 57.34 Delta: -0.336
+2025-03-02 11:13:43,197 - strike_selection - INFO - Found strike by delta 0.16: SPX 20250303 5000.0 C Bid: 986.98 Ask: 1037.59 Delta: 0.580
+2025-03-02 11:13:43,197 - strike_selection - INFO - Found strike by offset -20 from 4000.0: SPX 20250303 4000.0 P Bid: 54.55 Ask: 57.34 Delta: -0.336
+2025-03-02 11:13:43,197 - strike_selection - INFO - Found strike by offset 20 from 5000.0: SPX 20250303 5000.0 C Bid: 986.98 Ask: 1037.59 Delta: 0.580
+2025-03-02 11:13:48,577 - strike_selection - INFO - Selecting strikes for iron condor: SPX DTE: 1 (expiry: 20250303), Put delta: 0.16, Call delta: 0.16, Wing width: 20
+2025-03-02 11:13:48,577 - strike_selection - INFO - Found strike by delta 0.16: SPX 20250303 4000.0 P Bid: 54.55 Ask: 57.34 Delta: -0.336
+2025-03-02 11:13:48,577 - strike_selection - INFO - Found strike by delta 0.16: SPX 20250303 5000.0 C Bid: 986.98 Ask: 1037.59 Delta: 0.580
+2025-03-02 11:13:48,578 - strike_selection - INFO - Found strike by offset -20 from 4000.0: SPX 20250303 4000.0 P Bid: 54.55 Ask: 57.34 Delta: -0.336
+2025-03-02 11:13:48,578 - strike_selection - INFO - Found strike by offset 20 from 5000.0: SPX 20250303 5000.0 C Bid: 986.98 Ask: 1037.59 Delta: 0.580
+2025-03-02 11:15:50,820 - strike_selection - INFO - Selecting strikes for iron condor: SPX DTE: 3 (expiry: 20250305), Put delta: 0.16, Call delta: 0.16, Wing width: 20
+2025-03-02 11:15:50,820 - strike_selection - INFO - Found strike by delta 0.16: SPX 20250305 4000.0 P Bid: 94.48 Ask: 99.32 Delta: -0.336
+2025-03-02 11:15:50,821 - strike_selection - INFO - Found strike by delta 0.16: SPX 20250305 5000.0 C Bid: 1031.44 Ask: 1084.33 Delta: 0.580
+2025-03-02 11:15:50,821 - strike_selection - INFO - Found strike by offset -20 from 4000.0: SPX 20250305 4000.0 P Bid: 94.48 Ask: 99.32 Delta: -0.336
+2025-03-02 11:15:50,821 - strike_selection - INFO - Found strike by offset 20 from 5000.0: SPX 20250305 5000.0 C Bid: 1031.44 Ask: 1084.33 Delta: 0.580
+2025-03-02 11:17:26,525 - strike_selection - INFO - Selecting strikes for put fly: SPX DTE: 3 (expiry: 20250305), Center delta: 0.3, Wing width: 20
+2025-03-02 11:17:26,525 - strike_selection - INFO - Found strike by delta 0.3: SPX 20250305 4000.0 P Bid: 94.48 Ask: 99.32 Delta: -0.336
+2025-03-02 11:17:26,525 - strike_selection - INFO - Found strike by offset -20 from 4000.0: SPX 20250305 4000.0 P Bid: 94.48 Ask: 99.32 Delta: -0.336
+2025-03-02 11:17:26,525 - strike_selection - INFO - Found strike by offset 20 from 4000.0: SPX 20250305 4020.0 P Bid: 94.68 Ask: 99.54 Delta: -0.338
+2025-03-02 11:17:34,990 - strike_selection - INFO - Selecting strikes for double calendar: SPX Short DTE: 1 (expiry: 20250303), Long DTE: 8 (expiry: 20250310), Put delta: 0.3, Call delta: 0.3, Wing width: 0
+2025-03-02 11:17:34,991 - strike_selection - INFO - Found strike by delta 0.3: SPX 20250303 4000.0 P Bid: 54.55 Ask: 57.34 Delta: -0.336
+2025-03-02 11:17:34,992 - strike_selection - INFO - Found strike by delta 0.3: SPX 20250303 5000.0 C Bid: 986.98 Ask: 1037.59 Delta: 0.580
+2025-03-02 11:30:31,211 - strike_selection - INFO - Selecting strikes for iron condor: SPX DTE: 3 (expiry: 20250305), Put delta: 0.18, Call delta: 0.14, Wing width: 15
+2025-03-02 11:30:31,211 - strike_selection - INFO - Found strike by delta 0.18: SPX 20250305 4000.0 P Bid: 94.48 Ask: 99.32 Delta: -0.336
+2025-03-02 11:30:31,211 - strike_selection - INFO - Found strike by delta 0.14: SPX 20250305 5000.0 C Bid: 1031.44 Ask: 1084.33 Delta: 0.580
+2025-03-02 11:30:31,212 - strike_selection - INFO - Found strike by offset -15 from 4000.0: SPX 20250305 4000.0 P Bid: 94.48 Ask: 99.32 Delta: -0.336
+2025-03-02 11:30:31,212 - strike_selection - INFO - Found strike by offset 15 from 5000.0: SPX 20250305 5000.0 C Bid: 1031.44 Ask: 1084.33 Delta: 0.580
+2025-03-02 11:37:32,011 - strike_selection - INFO - Selecting strikes for iron condor: SPX DTE: 1 (expiry: 20250303), Put delta: 0.16, Call delta: 0.16, Wing width: 20
+2025-03-02 11:37:32,011 - strike_selection - INFO - Found strike by delta 0.16: SPX 20250303 3825.0 P Bid: 44.91 Ask: 47.21 Delta: -0.425
+2025-03-02 11:37:32,011 - strike_selection - INFO - Found strike by delta 0.16: SPX 20250303 5175.0 C Bid: 44.91 Ask: 47.21 Delta: 0.425
+2025-03-02 11:37:32,011 - strike_selection - INFO - Found strike by offset -20 from 3825.0: SPX 20250303 3825.0 P Bid: 44.91 Ask: 47.21 Delta: -0.425
+2025-03-02 11:37:32,012 - strike_selection - INFO - Found strike by offset 20 from 5175.0: SPX 20250303 5175.0 C Bid: 44.91 Ask: 47.21 Delta: 0.425
+2025-03-02 12:53:02,844 - strike_selection - WARNING - No higher strikes available than 6742.3345
+2025-03-02 12:53:02,845 - strike_selection - WARNING - No lower strikes available than 4982.3345
