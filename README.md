@@ -1,5 +1,7 @@
 # SPX Options Trader
 
+> **Note:** This README is a work in progress and will be updated throughout development as features are implemented.
+
 A Python application for analyzing and trading SPX options with a focus on Iron Condor strategies based on delta targets.
 
 ## Overview
